@@ -2,15 +2,12 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { homedir, platform } from 'node:os';
 import { execSync } from 'node:child_process';
-import { NATIVE_HOST_NAME } from 'underpixel-shared';
+import { NATIVE_HOST_NAME, EXTENSION_ID } from 'underpixel-shared';
 
 interface RegisterOptions {
   force?: boolean;
   browser?: 'chrome' | 'chromium';
 }
-
-/** Allowed extension ID — update after publishing to Chrome Web Store */
-const EXTENSION_ID = '*'; // Allow any extension ID during development
 
 /**
  * Get the path to the run_host wrapper script for this platform.
@@ -36,9 +33,7 @@ function createManifest(hostPath: string): object {
     type: 'stdio',
   };
 
-  if (EXTENSION_ID !== '*') {
-    manifest.allowed_origins = [`chrome-extension://${EXTENSION_ID}/`];
-  }
+  manifest.allowed_origins = [`chrome-extension://${EXTENSION_ID}/`];
 
   return manifest;
 }

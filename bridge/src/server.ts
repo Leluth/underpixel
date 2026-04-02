@@ -57,24 +57,16 @@ export async function createServer(host: NativeMessagingHost, port: number) {
     if (sessionId && transports.has(sessionId)) {
       transport = transports.get(sessionId)!;
     } else {
-      transport = new StreamableHTTPServerTransport({ sessionIdGenerator: () => crypto.randomUUID() });
+      // Generate session ID upfront to avoid timing gaps
+      const newId = crypto.randomUUID();
+      transport = new StreamableHTTPServerTransport({ sessionIdGenerator: () => newId });
+      transports.set(newId, transport);
+      transport.onclose = () => transports.delete(newId);
       await mcpServer.connect(transport);
-
-      // Store after connection (transport generates session ID)
-      transport.onclose = () => {
-        const sid = (transport as any).sessionId;
-        if (sid) transports.delete(sid);
-      };
     }
 
     const body = request.body as Record<string, unknown>;
-    const res = await transport.handleRequest(body, request.raw, reply.raw);
-
-    // Store transport by session ID for subsequent requests
-    const newSessionId = reply.raw.getHeader('mcp-session-id') as string;
-    if (newSessionId && !transports.has(newSessionId)) {
-      transports.set(newSessionId, transport);
-    }
+    await transport.handleRequest(body, request.raw, reply.raw);
   });
 
   // GET for SSE stream (Streamable HTTP spec)

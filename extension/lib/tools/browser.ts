@@ -1,12 +1,13 @@
 import { TOOL_NAMES } from 'underpixel-shared';
 import { toolRegistry } from './registry';
+import { resolveTabId, getActiveTabId } from './tab-utils';
 
 // ---- navigate ----
 
 toolRegistry.register(TOOL_NAMES.NAVIGATE, async (args) => {
   const url = args.url as string;
   const newTab = (args.newTab as boolean) ?? false;
-  let tabId = args.tabId as number | undefined;
+  let tabId = resolveTabId(args.tabId);
 
   if (newTab) {
     const tab = await chrome.tabs.create({ url });
@@ -18,34 +19,37 @@ toolRegistry.register(TOOL_NAMES.NAVIGATE, async (args) => {
   }
 
   if (!tabId) {
-    const [activeTab] = await chrome.tabs.query({
-      active: true,
-      currentWindow: true,
-    });
-    if (!activeTab?.id) throw new Error('No active tab found');
-    tabId = activeTab.id;
+    tabId = await getActiveTabId();
   }
 
-  await chrome.tabs.update(tabId, { url });
-
-  // Wait for navigation to complete
-  await new Promise<void>((resolve) => {
+  // Register listener BEFORE tabs.update, wrapped in try/catch
+  const navigationDone = new Promise<void>((resolve) => {
+    const finalTabId = tabId!;
+    let timeoutId: ReturnType<typeof setTimeout>;
     const listener = (
       updatedTabId: number,
       changeInfo: chrome.tabs.TabChangeInfo,
     ) => {
-      if (updatedTabId === tabId && changeInfo.status === 'complete') {
+      if (updatedTabId === finalTabId && changeInfo.status === 'complete') {
+        clearTimeout(timeoutId);
         chrome.tabs.onUpdated.removeListener(listener);
         resolve();
       }
     };
     chrome.tabs.onUpdated.addListener(listener);
-    // Timeout after 30s
-    setTimeout(() => {
+    timeoutId = setTimeout(() => {
       chrome.tabs.onUpdated.removeListener(listener);
       resolve();
     }, 30_000);
   });
+
+  try {
+    await chrome.tabs.update(tabId!, { url });
+  } catch (err) {
+    throw new Error(`Failed to navigate tab ${tabId}: ${err instanceof Error ? err.message : err}`);
+  }
+
+  await navigationDone;
 
   return {
     summary: `Navigated to ${url}`,
@@ -59,16 +63,8 @@ toolRegistry.register(TOOL_NAMES.NAVIGATE, async (args) => {
 toolRegistry.register(TOOL_NAMES.INTERACT, async (args) => {
   const action = args.action as string;
   const selector = args.selector as string | undefined;
-  let tabId = args.tabId as number | undefined;
-
-  if (!tabId) {
-    const [activeTab] = await chrome.tabs.query({
-      active: true,
-      currentWindow: true,
-    });
-    if (!activeTab?.id) throw new Error('No active tab found');
-    tabId = activeTab.id;
-  }
+  let tabId = resolveTabId(args.tabId);
+  if (!tabId) tabId = await getActiveTabId();
 
   switch (action) {
     case 'click': {
@@ -162,17 +158,9 @@ toolRegistry.register(TOOL_NAMES.INTERACT, async (args) => {
 // ---- page_read ----
 
 toolRegistry.register(TOOL_NAMES.PAGE_READ, async (args) => {
-  let tabId = args.tabId as number | undefined;
+  let tabId = resolveTabId(args.tabId);
+  if (!tabId) tabId = await getActiveTabId();
   const filter = (args.filter as string) || 'all';
-
-  if (!tabId) {
-    const [activeTab] = await chrome.tabs.query({
-      active: true,
-      currentWindow: true,
-    });
-    if (!activeTab?.id) throw new Error('No active tab found');
-    tabId = activeTab.id;
-  }
 
   const [result] = await chrome.scripting.executeScript({
     target: { tabId },
@@ -240,16 +228,8 @@ toolRegistry.register(TOOL_NAMES.PAGE_READ, async (args) => {
 // ---- screenshot ----
 
 toolRegistry.register(TOOL_NAMES.SCREENSHOT, async (args) => {
-  let tabId = args.tabId as number | undefined;
-
-  if (!tabId) {
-    const [activeTab] = await chrome.tabs.query({
-      active: true,
-      currentWindow: true,
-    });
-    if (!activeTab?.id) throw new Error('No active tab found');
-    tabId = activeTab.id;
-  }
+  let tabId = resolveTabId(args.tabId);
+  if (!tabId) tabId = await getActiveTabId();
 
   // Ensure the tab is focused for captureVisibleTab
   const tab = await chrome.tabs.get(tabId);
@@ -277,16 +257,8 @@ toolRegistry.register(TOOL_NAMES.SCREENSHOT, async (args) => {
 
 toolRegistry.register(TOOL_NAMES.DOM_TEXT, async (args) => {
   const selector = args.selector as string;
-  let tabId = args.tabId as number | undefined;
-
-  if (!tabId) {
-    const [activeTab] = await chrome.tabs.query({
-      active: true,
-      currentWindow: true,
-    });
-    if (!activeTab?.id) throw new Error('No active tab found');
-    tabId = activeTab.id;
-  }
+  let tabId = resolveTabId(args.tabId);
+  if (!tabId) tabId = await getActiveTabId();
 
   const [result] = await chrome.scripting.executeScript({
     target: { tabId },

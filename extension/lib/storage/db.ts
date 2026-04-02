@@ -72,12 +72,11 @@ interface UnderPixelDB extends DBSchema {
 const DB_NAME = 'underpixel';
 const DB_VERSION = 1;
 
-let dbInstance: IDBPDatabase<UnderPixelDB> | null = null;
+let dbPromise: Promise<IDBPDatabase<UnderPixelDB>> | null = null;
 
-export async function db(): Promise<IDBPDatabase<UnderPixelDB>> {
-  if (dbInstance) return dbInstance;
-
-  dbInstance = await openDB<UnderPixelDB>(DB_NAME, DB_VERSION, {
+export function db(): Promise<IDBPDatabase<UnderPixelDB>> {
+  if (!dbPromise) {
+    dbPromise = openDB<UnderPixelDB>(DB_NAME, DB_VERSION, {
     upgrade(database) {
       // Sessions
       const sessions = database.createObjectStore('sessions', { keyPath: 'id' });
@@ -120,8 +119,8 @@ export async function db(): Promise<IDBPDatabase<UnderPixelDB>> {
       bundles.createIndex('by-session-time', ['sessionId', 'timestamp']);
     },
   });
-
-  return dbInstance;
+  }
+  return dbPromise;
 }
 
 /** Get the most recent active or stopped session */
@@ -135,24 +134,29 @@ export async function getLatestSession(): Promise<CaptureSession | undefined> {
 /** Delete a session and all its related data */
 export async function deleteSession(sessionId: string): Promise<void> {
   const database = await db();
+
+  // Collect all keys in parallel (outside the delete transaction)
+  const stores = ['networkRequests', 'responseBodies', 'rrwebEvents', 'screenshots', 'correlationBundles'] as const;
+  const keyArrays = await Promise.all(
+    stores.map((storeName) => database.getAllKeysFromIndex(storeName, 'by-session', sessionId)),
+  );
+  const keysByStore = new Map(stores.map((name, i) => [name, keyArrays[i]]));
+
+  // Delete all in a single transaction without yielding between deletes
   const tx = database.transaction(
-    ['sessions', 'networkRequests', 'responseBodies', 'rrwebEvents', 'screenshots', 'correlationBundles'],
+    ['sessions', ...stores],
     'readwrite',
   );
 
-  // Delete from each store by session index
-  const stores = ['networkRequests', 'responseBodies', 'rrwebEvents', 'screenshots', 'correlationBundles'] as const;
   for (const storeName of stores) {
     const store = tx.objectStore(storeName);
-    const index = store.index('by-session');
-    let cursor = await index.openCursor(sessionId);
-    while (cursor) {
-      await cursor.delete();
-      cursor = await cursor.continue();
+    const keys = keysByStore.get(storeName) || [];
+    for (const key of keys) {
+      store.delete(key);
     }
   }
 
-  await tx.objectStore('sessions').delete(sessionId);
+  tx.objectStore('sessions').delete(sessionId);
   await tx.done;
 }
 

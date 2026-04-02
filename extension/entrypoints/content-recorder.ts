@@ -32,7 +32,7 @@ export default defineContentScript({
                     event,
                     isCheckout,
                   },
-                  '*',
+                  window.location.origin,
                 );
               },
               sampling: data.config?.sampling || {
@@ -73,7 +73,7 @@ export default defineContentScript({
               value: (entry as any).value,
               timestamp: performance.timeOrigin + entry.startTime,
             },
-            '*',
+            window.location.origin,
           );
         }
       });

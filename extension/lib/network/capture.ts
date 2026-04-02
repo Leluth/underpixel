@@ -11,6 +11,9 @@ import { db } from '../storage/db';
 
 const CDP_OWNER = 'underpixel-network';
 
+/** Resource types treated as API calls (Document included for page-level fetches like HTML APIs) */
+const API_RESOURCE_TYPES = ['XHR', 'Fetch', 'Document'];
+
 /** Active captures: tabId -> sessionId */
 const activeSessions = new Map<number, string>();
 /** In-flight requests: CDP requestId -> partial NetworkRequest */
@@ -79,8 +82,7 @@ function shouldCapture(
   config: CaptureConfig,
 ): boolean {
   // Resource type filter
-  const apiTypes = ['XHR', 'Fetch', 'Document'];
-  if (!config.includeStatic && !apiTypes.includes(resourceType)) {
+  if (!config.includeStatic && !API_RESOURCE_TYPES.includes(resourceType)) {
     return false;
   }
 
@@ -146,10 +148,8 @@ async function onRequestWillBeSent(
   const count = requestCounts.get(sessionId) || 0;
   if (count >= MAX_REQUESTS_PER_SESSION) return;
 
-  // Defer filtering until we have config (async)
-  const config = await getConfig(sessionId);
-  if (!shouldCapture(url, type, config)) return;
-
+  // Set stub SYNCHRONOUSLY so response/finish events don't miss it.
+  // Filter check is async (needs DB config), so we register first, evict if filtered.
   const nr: NetworkRequest = {
     requestId,
     sessionId,
@@ -161,11 +161,16 @@ async function onRequestWillBeSent(
     requestBody: (request.postData as string) || undefined,
     startTime: Date.now(),
   };
-
   pendingRequests.set(requestId, nr);
+
+  // Now check filter — evict if this request shouldn't be captured
+  const config = await getConfig(sessionId);
+  if (!shouldCapture(url, type, config)) {
+    pendingRequests.delete(requestId);
+  }
 }
 
-async function onResponseReceived(
+function onResponseReceived(
   _tabId: number,
   _sessionId: string,
   params: Record<string, unknown>,
@@ -268,10 +273,18 @@ function handleDebuggerDetach(
 ) {
   const tabId = source.tabId;
   if (tabId && activeSessions.has(tabId)) {
+    const sessionId = activeSessions.get(tabId);
     console.warn(
       `[UnderPixel] Debugger detached from tab ${tabId}: ${reason}`,
     );
     activeSessions.delete(tabId);
+
+    // Clean up stranded pending requests for this session
+    for (const [id, nr] of pendingRequests) {
+      if (nr.sessionId === sessionId) {
+        pendingRequests.delete(id);
+      }
+    }
   }
 }
 

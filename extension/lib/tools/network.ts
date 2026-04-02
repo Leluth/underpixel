@@ -6,6 +6,7 @@ import {
   NetworkRequest,
 } from 'underpixel-shared';
 import { toolRegistry } from './registry';
+import { resolveTabId, getActiveTabId } from './tab-utils';
 import { startCapture, stopCapture, getSessionId } from '../network/capture';
 import { correlationEngine } from '../correlation/engine';
 import { db, getLatestSession } from '../storage/db';
@@ -18,15 +19,8 @@ toolRegistry.register(TOOL_NAMES.CAPTURE_START, async (args) => {
   const screenshotsEnabled = (args.screenshotsEnabled as boolean) ?? true;
 
   // Resolve target tab
-  let tabId = args.tabId as number | undefined;
-  if (!tabId) {
-    const [activeTab] = await chrome.tabs.query({
-      active: true,
-      currentWindow: true,
-    });
-    if (!activeTab?.id) throw new Error('No active tab found');
-    tabId = activeTab.id;
-  }
+  let tabId = resolveTabId(args.tabId);
+  if (!tabId) tabId = await getActiveTabId();
 
   const tab = await chrome.tabs.get(tabId);
 
@@ -101,8 +95,9 @@ toolRegistry.register(TOOL_NAMES.CAPTURE_STOP, async (args) => {
   let sessionId = args.sessionId as string | undefined;
   let tabId: number | undefined;
 
+  const database = await db();
+
   if (sessionId) {
-    const database = await db();
     const session = await database.get('sessions', sessionId);
     if (session) tabId = session.tabId;
   } else {
@@ -132,8 +127,7 @@ toolRegistry.register(TOOL_NAMES.CAPTURE_STOP, async (args) => {
   // Flush any buffered rrweb events before closing the session
   await flushPendingEvents();
 
-  // Update session
-  const database = await db();
+  // Update session (reuse db handle from above)
   const session = await database.get('sessions', sessionId);
   if (session) {
     session.status = 'stopped';

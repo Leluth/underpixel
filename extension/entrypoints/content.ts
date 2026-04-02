@@ -31,7 +31,7 @@ export default defineContentScript({
             action: msg.action,
             config: msg.config,
           },
-          '*',
+          window.location.origin,
         );
         sendResponse({ ok: true });
       }

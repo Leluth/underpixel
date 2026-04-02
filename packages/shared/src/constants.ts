@@ -1,6 +1,9 @@
 /** Native Messaging host identifier */
 export const NATIVE_HOST_NAME = 'com.underpixel.bridge';
 
+/** Chrome extension ID (set after first unpacked load, update for Web Store) */
+export const EXTENSION_ID = 'ggbdbakcfbghlcnggcpipkhgiepbiijh';
+
 /** Default HTTP server port for MCP */
 export const DEFAULT_PORT = 12307;
 
