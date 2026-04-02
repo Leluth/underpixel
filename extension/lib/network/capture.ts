@@ -29,7 +29,7 @@ chrome.debugger.onDetach.addListener(handleDebuggerDetach);
 export async function startCapture(
   tabId: number,
   sessionId: string,
-  config: CaptureConfig,
+  _config: CaptureConfig,
 ): Promise<void> {
   if (activeSessions.has(tabId)) {
     await stopCapture(tabId);
@@ -76,11 +76,7 @@ async function getConfig(sessionId: string): Promise<CaptureConfig> {
   return session?.config || (DEFAULT_CAPTURE_CONFIG as CaptureConfig);
 }
 
-function shouldCapture(
-  url: string,
-  resourceType: string,
-  config: CaptureConfig,
-): boolean {
+function shouldCapture(url: string, resourceType: string, config: CaptureConfig): boolean {
   // Resource type filter
   if (!config.includeStatic && !API_RESOURCE_TYPES.includes(resourceType)) {
     return false;
@@ -109,11 +105,7 @@ function shouldCapture(
 
 // ---- CDP Event Handlers ----
 
-function handleDebuggerEvent(
-  source: chrome.debugger.Debuggee,
-  method: string,
-  params?: object,
-) {
+function handleDebuggerEvent(source: chrome.debugger.Debuggee, method: string, params?: object) {
   const tabId = source.tabId;
   if (!tabId || !activeSessions.has(tabId) || !params) return;
   const p = params as Record<string, unknown>;
@@ -171,11 +163,7 @@ async function onRequestWillBeSent(
   }
 }
 
-function onResponseReceived(
-  _tabId: number,
-  _sessionId: string,
-  params: Record<string, unknown>,
-) {
+function onResponseReceived(_tabId: number, _sessionId: string, params: Record<string, unknown>) {
   const requestId = params.requestId as string;
   const nr = pendingRequests.get(requestId);
   if (!nr) return;
@@ -268,16 +256,11 @@ function onLoadingFailed(sessionId: string, params: Record<string, unknown>) {
   db().then((database) => database.put('networkRequests', nr));
 }
 
-function handleDebuggerDetach(
-  source: chrome.debugger.Debuggee,
-  reason: string,
-) {
+function handleDebuggerDetach(source: chrome.debugger.Debuggee, reason: string) {
   const tabId = source.tabId;
   if (tabId && activeSessions.has(tabId)) {
     const sessionId = activeSessions.get(tabId);
-    console.warn(
-      `[UnderPixel] Debugger detached from tab ${tabId}: ${reason}`,
-    );
+    console.warn(`[UnderPixel] Debugger detached from tab ${tabId}: ${reason}`);
     activeSessions.delete(tabId);
 
     // Clean up stranded pending requests for this session

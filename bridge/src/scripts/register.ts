@@ -52,17 +52,13 @@ function getUserManifestPaths(browser?: 'chrome' | 'chromium'): string[] {
       const base = b === 'chrome' ? 'Google\\Chrome' : 'Chromium';
       paths.push(join(appData, base, 'NativeMessagingHosts', fileName));
     } else if (os === 'darwin') {
-      const base =
-        b === 'chrome'
-          ? 'Google/Chrome'
-          : 'Chromium';
+      const base = b === 'chrome' ? 'Google/Chrome' : 'Chromium';
       paths.push(
         join(home, 'Library', 'Application Support', base, 'NativeMessagingHosts', fileName),
       );
     } else {
       // Linux
-      const base =
-        b === 'chrome' ? 'google-chrome' : 'chromium';
+      const base = b === 'chrome' ? 'google-chrome' : 'chromium';
       paths.push(join(home, '.config', base, 'NativeMessagingHosts', fileName));
     }
   }
@@ -81,7 +77,7 @@ function writeWindowsRegistry(manifestPath: string, browser: string): void {
       stdio: 'pipe',
     });
     console.log(`  Registry entry created: ${regPath}`);
-  } catch (e) {
+  } catch {
     console.warn(`  Warning: Failed to create registry entry at ${regPath}`);
   }
 }

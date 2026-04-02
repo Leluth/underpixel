@@ -8,7 +8,11 @@ const LOG_FILE = (process.env.LOCALAPPDATA || '/tmp') + '/underpixel-bridge.log'
 function log(msg: string) {
   const line = `[${new Date().toISOString()}] ${msg}\n`;
   console.error(line.trim());
-  if (DEBUG) { try { appendFileSync(LOG_FILE, line); } catch {} }
+  if (DEBUG) {
+    try {
+      appendFileSync(LOG_FILE, line);
+    } catch {}
+  }
 }
 import { Server as McpServerBase } from '@modelcontextprotocol/sdk/server/index.js';
 import {
@@ -81,7 +85,7 @@ export async function createServer(host: NativeMessagingHost, port: number) {
     log(`[MCP] POST session=${request.headers['mcp-session-id'] || '(none)'} method=${method}`);
     const sessionId = request.headers['mcp-session-id'] as string | undefined;
     let transport = sessionId
-      ? transports.get(sessionId) as StreamableHTTPServerTransport | undefined
+      ? (transports.get(sessionId) as StreamableHTTPServerTransport | undefined)
       : undefined;
 
     if (transport) {
@@ -127,7 +131,7 @@ export async function createServer(host: NativeMessagingHost, port: number) {
   app.get('/mcp', async (request, reply) => {
     const sessionId = request.headers['mcp-session-id'] as string | undefined;
     const transport = sessionId
-      ? transports.get(sessionId) as StreamableHTTPServerTransport | undefined
+      ? (transports.get(sessionId) as StreamableHTTPServerTransport | undefined)
       : undefined;
 
     if (!transport) {
@@ -156,7 +160,7 @@ export async function createServer(host: NativeMessagingHost, port: number) {
   app.delete('/mcp', async (request, reply) => {
     const sessionId = request.headers['mcp-session-id'] as string | undefined;
     const transport = sessionId
-      ? transports.get(sessionId) as StreamableHTTPServerTransport | undefined
+      ? (transports.get(sessionId) as StreamableHTTPServerTransport | undefined)
       : undefined;
 
     if (!transport) {

@@ -154,8 +154,7 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
         },
         includeBody: {
           type: 'boolean',
-          description:
-            'Include request/response bodies (default: false, can be large)',
+          description: 'Include request/response bodies (default: false, can be large)',
         },
         limit: {
           type: 'number',

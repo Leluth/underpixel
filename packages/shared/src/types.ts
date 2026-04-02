@@ -141,9 +141,8 @@ export interface CorrelationBundle {
 }
 
 export interface DependencyEdge {
-  from: { requestId: string; url: string; method: string };
-  to: { requestId: string; url: string; method: string };
+  from: { url: string; method: string };
+  to: { url: string; method: string };
   via: string;
-  valueType: 'jwt' | 'uuid' | 'url' | 'token' | 'id';
-  location: 'url' | 'header' | 'body';
+  valueType: 'jwt' | 'uuid' | 'token' | 'id';
 }

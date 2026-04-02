@@ -61,11 +61,7 @@ function handleMessage(message: NativeMessage) {
   }
 }
 
-async function handleToolCall(
-  requestId: string,
-  name: string,
-  args: Record<string, unknown>,
-) {
+async function handleToolCall(requestId: string, name: string, args: Record<string, unknown>) {
   try {
     const result = await toolRegistry.execute(name, args);
     sendToNative({

@@ -11,11 +11,7 @@ const mcpJson = document.getElementById('mcp-json')!;
 let capturing = false;
 
 async function updateState() {
-  const state = await chrome.storage.local.get([
-    'connected',
-    'serverPort',
-    'captureActive',
-  ]);
+  const state = await chrome.storage.local.get(['connected', 'serverPort', 'captureActive']);
 
   if (state.connected && state.serverPort) {
     statusEl.textContent = 'Connected';
@@ -29,11 +25,15 @@ async function updateState() {
 
     const url = `http://127.0.0.1:${state.serverPort}/mcp`;
     mcpCmd.textContent = `claude mcp add underpixel --scope user --transport http ${url}`;
-    mcpJson.textContent = JSON.stringify({
-      mcpServers: {
-        underpixel: { type: 'streamableHttp', url },
+    mcpJson.textContent = JSON.stringify(
+      {
+        mcpServers: {
+          underpixel: { type: 'streamableHttp', url },
+        },
       },
-    }, null, 2);
+      null,
+      2,
+    );
   } else {
     statusEl.textContent = 'Disconnected';
     statusEl.className = 'status disconnected';
@@ -70,7 +70,10 @@ captureBtn.addEventListener('click', async () => {
   } catch (err) {
     console.error('Popup action failed:', err);
   }
-  setTimeout(() => { captureBtn.disabled = false; updateState(); }, 500);
+  setTimeout(() => {
+    captureBtn.disabled = false;
+    updateState();
+  }, 500);
 });
 
 // Copy buttons
@@ -78,7 +81,9 @@ function copyToClipboard(text: string, btn: HTMLButtonElement) {
   navigator.clipboard.writeText(text).then(() => {
     const original = btn.textContent;
     btn.textContent = 'Copied!';
-    setTimeout(() => { btn.textContent = original; }, 1500);
+    setTimeout(() => {
+      btn.textContent = original;
+    }, 1500);
   });
 }
 
@@ -102,7 +107,10 @@ clearBtn.addEventListener('click', async () => {
       action: 'clear-all-data',
     });
     clearBtn.textContent = 'Cleared!';
-    setTimeout(() => { clearBtn.textContent = 'Clear All Data'; clearBtn.disabled = false; }, 1500);
+    setTimeout(() => {
+      clearBtn.textContent = 'Clear All Data';
+      clearBtn.disabled = false;
+    }, 1500);
   } catch {
     clearBtn.textContent = 'Clear All Data';
     clearBtn.disabled = false;

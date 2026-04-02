@@ -1,6 +1,7 @@
 # Pending Manual Tests
 
 ## dom_text TreeWalker fix
+
 - [ ] Test `underpixel_dom_text` with `body` selector on a JSON API page (e.g. `https://reqres.in/api/users`)
 - [ ] Verify no "Value is unserializable" error
 - [ ] Confirm JSON text content is returned correctly
@@ -10,6 +11,7 @@
 - [ ] Verify script/style content is excluded from results
 
 ## correlate reverse path (DOM element → API tracing)
+
 - [ ] Start capture on a page with a data table (e.g. `https://reqres.in`)
 - [ ] Click around to trigger API calls that populate the table
 - [ ] Stop capture
@@ -24,3 +26,18 @@
 - [ ] Test with empty query — should return empty results, not crash
 - [ ] Test with `#` alone — should return empty results
 - [ ] Test with no capture session — should throw "No capture sessions found"
+
+## attribute-value search (new in correlate)
+
+- [ ] `correlate("cdn.example.com/photo.jpg")` on a page with `<img src="...cdn.example.com/photo.jpg">` — verify match via `src` attribute
+- [ ] `correlate("placeholder text")` on a page with `<input placeholder="placeholder text">` — verify match
+- [ ] Verify `data-*` attribute values are also searched during free-text queries
+
+## value-level correlation (DOM text → API JSON field)
+
+- [ ] Start capture on a page that loads data from an API (e.g. product names)
+- [ ] Stop capture
+- [ ] `correlate("product")` — verify `valueCorrelations` array is present in response
+- [ ] Verify `valueCorrelations` entries include `domValue`, `apiUrl`, `jsonPath` (e.g. `items[0].name`)
+- [ ] Verify value correlations only extract from matched DOM subtrees (not entire page)
+- [ ] Test with a page showing many short strings — verify no noise from 1-3 char values

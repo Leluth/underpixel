@@ -1,5 +1,3 @@
-import { TOOL_NAMES } from 'underpixel-shared';
-
 export type ToolHandler = (args: Record<string, unknown>) => Promise<unknown>;
 
 class ToolRegistry {

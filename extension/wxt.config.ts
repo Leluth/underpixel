@@ -6,7 +6,7 @@ export default defineConfig({
   modules: [],
   manifest: {
     name: 'UnderPixel',
-    description: 'Record, replay, and understand what\'s behind the pixels',
+    description: "Record, replay, and understand what's behind the pixels",
     version: '0.1.0',
     permissions: [
       'nativeMessaging',

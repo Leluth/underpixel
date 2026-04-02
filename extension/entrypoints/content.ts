@@ -13,12 +13,14 @@ export default defineContentScript({
       if (!data || data.source !== 'underpixel-event') return;
 
       // Forward to background service worker
-      chrome.runtime.sendMessage({
-        type: data.type, // 'rrweb' | 'layout-shift'
-        payload: data,
-      }).catch(() => {
-        // Extension context may be invalidated
-      });
+      chrome.runtime
+        .sendMessage({
+          type: data.type, // 'rrweb' | 'layout-shift'
+          payload: data,
+        })
+        .catch(() => {
+          // Extension context may be invalidated
+        });
     });
 
     // Receive commands from background (start/stop recording)

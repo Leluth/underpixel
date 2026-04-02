@@ -2,36 +2,7 @@ import { TOOL_NAMES } from 'underpixel-shared';
 import { toolRegistry } from './registry';
 import { db, getLatestSession } from '../storage/db';
 import { findDomElements, collectMatchedNodeValues } from '../correlation/dom-walker';
-
-// ---- Value-level correlation helpers ----
-
-/** Walk a JSON object once, indexing every leaf value → its JSON path(s). */
-function buildLeafMap(obj: unknown, out: Map<string, string[]>, path = ''): void {
-  if (obj === null || obj === undefined) return;
-
-  if (typeof obj === 'string') {
-    const list = out.get(obj);
-    if (list) list.push(path); else out.set(obj, [path]);
-    return;
-  }
-  if (typeof obj === 'number' || typeof obj === 'boolean') {
-    const s = String(obj);
-    const list = out.get(s);
-    if (list) list.push(path); else out.set(s, [path]);
-    return;
-  }
-  if (Array.isArray(obj)) {
-    for (let i = 0; i < obj.length; i++) {
-      buildLeafMap(obj[i], out, `${path}[${i}]`);
-    }
-    return;
-  }
-  if (typeof obj === 'object') {
-    for (const [key, val] of Object.entries(obj as Record<string, unknown>)) {
-      buildLeafMap(val, out, path ? `${path}.${key}` : key);
-    }
-  }
-}
+import { buildLeafMap, extractTrackableValues } from './json-utils';
 
 /** Result shape for a value-level correlation hit */
 interface ValueCorrelation {
@@ -93,13 +64,9 @@ toolRegistry.register(TOOL_NAMES.CORRELATE, async (args) => {
   const bodyRefs = requests
     .filter((r) => r.status === 'complete' && !r.responseBody && r.responseBodyRef)
     .map((r) => r.responseBodyRef!);
-  const bodyRecords = await Promise.all(
-    bodyRefs.map((ref) => database.get('responseBodies', ref)),
-  );
-  const bodyByRef = new Map(
-    bodyRefs.map((ref, i) => [ref, bodyRecords[i]?.body ?? '']),
-  );
-  const resolveBody = (r: typeof requests[number]) =>
+  const bodyRecords = await Promise.all(bodyRefs.map((ref) => database.get('responseBodies', ref)));
+  const bodyByRef = new Map(bodyRefs.map((ref, i) => [ref, bodyRecords[i]?.body ?? '']));
+  const resolveBody = (r: (typeof requests)[number]) =>
     r.responseBody || bodyByRef.get(r.responseBodyRef!) || '';
 
   for (const r of requests) {
@@ -188,7 +155,10 @@ toolRegistry.register(TOOL_NAMES.CORRELATE, async (args) => {
       const allMatchedIds = new Set([...forwardMatchIds, ...reverseMatchIds]);
       const apisToSearch = requests
         .filter((r) => r.status === 'complete')
-        .sort((a, b) => (allMatchedIds.has(b.requestId) ? 1 : 0) - (allMatchedIds.has(a.requestId) ? 1 : 0))
+        .sort(
+          (a, b) =>
+            (allMatchedIds.has(b.requestId) ? 1 : 0) - (allMatchedIds.has(a.requestId) ? 1 : 0),
+        )
         .slice(0, 30);
 
       const seen = new Set<string>();
@@ -236,15 +206,9 @@ toolRegistry.register(TOOL_NAMES.CORRELATE, async (args) => {
   return {
     summary:
       `Found ${matchingApis.length} API calls matching "${query}"` +
-      (domMatches.length > 0
-        ? ` (${domMatches.length} DOM elements matched)`
-        : '') +
-      (matchingBundles.length > 0
-        ? `, ${matchingBundles.length} with DOM correlations`
-        : '') +
-      (valueCorrelations.length > 0
-        ? `, ${valueCorrelations.length} value-level matches`
-        : ''),
+      (domMatches.length > 0 ? ` (${domMatches.length} DOM elements matched)` : '') +
+      (matchingBundles.length > 0 ? `, ${matchingBundles.length} with DOM correlations` : '') +
+      (valueCorrelations.length > 0 ? `, ${valueCorrelations.length} value-level matches` : ''),
     query,
     sessionId,
     matchedApiCalls: matchingApis,
@@ -277,11 +241,7 @@ toolRegistry.register(TOOL_NAMES.TIMELINE, async (args) => {
   }
 
   const database = await db();
-  let bundles = await database.getAllFromIndex(
-    'correlationBundles',
-    'by-session',
-    sessionId,
-  );
+  let bundles = await database.getAllFromIndex('correlationBundles', 'by-session', sessionId);
 
   // Apply time range
   if (startTime) bundles = bundles.filter((b) => b.timestamp >= startTime);
@@ -336,15 +296,9 @@ toolRegistry.register(TOOL_NAMES.SNAPSHOT_AT, async (args) => {
   }
 
   // Find API calls active around that timestamp (within 1 second)
-  const requests = await database.getAllFromIndex(
-    'networkRequests',
-    'by-session',
-    sessionId,
-  );
+  const requests = await database.getAllFromIndex('networkRequests', 'by-session', sessionId);
   const nearbyApis = requests.filter(
-    (r) =>
-      r.startTime <= timestamp + 1000 &&
-      (r.endTime ? r.endTime >= timestamp - 1000 : true),
+    (r) => r.startTime <= timestamp + 1000 && (r.endTime ? r.endTime >= timestamp - 1000 : true),
   );
 
   return {
@@ -380,9 +334,7 @@ toolRegistry.register(TOOL_NAMES.REPLAY, async (args) => {
     sessionId = session.id;
   }
 
-  const replayUrl = chrome.runtime.getURL(
-    `replay.html?sessionId=${sessionId}`,
-  );
+  const replayUrl = chrome.runtime.getURL(`replay.html?sessionId=${sessionId}`);
   const tab = await chrome.tabs.create({ url: replayUrl });
 
   return {
@@ -404,11 +356,7 @@ toolRegistry.register(TOOL_NAMES.API_DEPENDENCIES, async (args) => {
   }
 
   const database = await db();
-  const requests = await database.getAllFromIndex(
-    'networkRequests',
-    'by-session',
-    sessionId,
-  );
+  const requests = await database.getAllFromIndex('networkRequests', 'by-session', sessionId);
 
   // Only consider completed requests with response bodies
   const completed = requests
@@ -422,9 +370,7 @@ toolRegistry.register(TOOL_NAMES.API_DEPENDENCIES, async (args) => {
   const depBodyRecords = await Promise.all(
     depBodyRefs.map((ref) => database.get('responseBodies', ref)),
   );
-  const depBodyByRef = new Map(
-    depBodyRefs.map((ref, i) => [ref, depBodyRecords[i]?.body ?? '']),
-  );
+  const depBodyByRef = new Map(depBodyRefs.map((ref, i) => [ref, depBodyRecords[i]?.body ?? '']));
 
   const edges: Array<{
     from: { url: string; method: string };
@@ -469,62 +415,3 @@ toolRegistry.register(TOOL_NAMES.API_DEPENDENCIES, async (args) => {
     edges,
   };
 });
-
-function extractTrackableValues(body: string): Map<string, string> {
-  const values = new Map<string, string>();
-  try {
-    const parsed = JSON.parse(body);
-    walkJson(parsed, (key, value) => {
-      if (typeof value === 'string') {
-        // JWTs (base64url-encoded JSON, always start with eyJ)
-        if (value.startsWith('eyJ') && value.length > 30) {
-          values.set(value, 'jwt');
-        }
-        // UUIDs
-        else if (
-          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
-        ) {
-          values.set(value, 'uuid');
-        }
-        // Hex hashes (SHA-1, SHA-256, etc.)
-        else if (/^[0-9a-f]{32,}$/i.test(value)) {
-          values.set(value, 'token');
-        }
-        // High-entropy tokens: 32+ chars, no spaces/dashes/dots, mixed with digits
-        // Excludes readable slugs like "firecrawl-claude-plugin"
-        else if (
-          value.length >= 32 &&
-          /^[A-Za-z0-9+/=_]+$/.test(value) && // no dashes (excludes slugs)
-          /\d/.test(value) // must contain at least one digit (excludes plain words)
-        ) {
-          values.set(value, 'token');
-        }
-      }
-      // Numeric IDs from keys ending in "id" (e.g., userId, projectId)
-      if (typeof value === 'number' && typeof key === 'string' && /id$/i.test(key)) {
-        values.set(String(value), 'id');
-      }
-    });
-  } catch {
-    // Not JSON
-  }
-  return values;
-}
-
-function walkJson(
-  obj: unknown,
-  cb: (key: string | number, value: unknown) => void,
-  key: string | number = '',
-): void {
-  if (obj === null || obj === undefined) return;
-  cb(key, obj);
-  if (typeof obj === 'object') {
-    if (Array.isArray(obj)) {
-      for (let i = 0; i < obj.length; i++) walkJson(obj[i], cb, i);
-    } else {
-      for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
-        walkJson(v, cb, k);
-      }
-    }
-  }
-}

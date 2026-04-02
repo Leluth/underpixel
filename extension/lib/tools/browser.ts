@@ -38,19 +38,15 @@ toolRegistry.register(TOOL_NAMES.NAVIGATE, async (args) => {
   // Wait for navigation to complete (only set up after tabs.update succeeds)
   await new Promise<void>((resolve) => {
     const finalTabId = tabId!;
-    let timeoutId: ReturnType<typeof setTimeout>;
-    const listener = (
-      updatedTabId: number,
-      changeInfo: chrome.tabs.OnUpdatedInfo,
-    ) => {
+    const listener = (updatedTabId: number, changeInfo: chrome.tabs.OnUpdatedInfo) => {
       if (updatedTabId === finalTabId && changeInfo.status === 'complete') {
-        clearTimeout(timeoutId);
+        clearTimeout(navTimeout);
         chrome.tabs.onUpdated.removeListener(listener);
         resolve();
       }
     };
     chrome.tabs.onUpdated.addListener(listener);
-    timeoutId = setTimeout(() => {
+    const navTimeout = setTimeout(() => {
       chrome.tabs.onUpdated.removeListener(listener);
       resolve();
     }, 30_000);
@@ -256,7 +252,7 @@ toolRegistry.register(TOOL_NAMES.SCREENSHOT, async (args) => {
   // Allow up to 200K chars inline (~150KB decoded) to cover the common case.
   const MAX_INLINE_CHARS = 200_000;
   const timestamp = Date.now();
-  const sizeKB = Math.round(dataUrl.length * 3 / 4 / 1024);
+  const sizeKB = Math.round((dataUrl.length * 3) / 4 / 1024);
 
   if (dataUrl.length <= MAX_INLINE_CHARS) {
     return {
@@ -352,7 +348,13 @@ toolRegistry.register(TOOL_NAMES.DOM_TEXT, async (args) => {
               // For small inline elements, textContent is fine and faster.
               // For block-level / body elements, use TreeWalker to avoid
               // serialization failures and huge intermediate strings.
-              if (tag === 'body' || tag === 'div' || tag === 'section' || tag === 'main' || tag === 'article') {
+              if (
+                tag === 'body' ||
+                tag === 'div' ||
+                tag === 'section' ||
+                tag === 'main' ||
+                tag === 'article'
+              ) {
                 text = walkText(el, MAX_TEXT);
               } else {
                 text = (el.textContent || '').trim().substring(0, MAX_TEXT);

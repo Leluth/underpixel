@@ -3,11 +3,10 @@ import {
   CaptureSession,
   DEFAULT_CAPTURE_CONFIG,
   TOOL_NAMES,
-  NetworkRequest,
 } from 'underpixel-shared';
 import { toolRegistry } from './registry';
 import { resolveTabId, getActiveTabId } from './tab-utils';
-import { startCapture, stopCapture, getSessionId } from '../network/capture';
+import { startCapture, stopCapture } from '../network/capture';
 import { correlationEngine } from '../correlation/engine';
 import { db, getLatestSession } from '../storage/db';
 import { flushPendingEvents, clearSessionBuffer } from '../recording/event-batcher';
@@ -26,9 +25,7 @@ toolRegistry.register(TOOL_NAMES.CAPTURE_START, async (args) => {
 
   // chrome:// and edge:// URLs can't be captured
   if (tab.url && /^(chrome|edge|about|devtools):/.test(tab.url)) {
-    throw new Error(
-      `Cannot capture on ${tab.url} — navigate to a regular webpage first`,
-    );
+    throw new Error(`Cannot capture on ${tab.url} — navigate to a regular webpage first`);
   }
 
   // Build config
@@ -154,12 +151,13 @@ toolRegistry.register(TOOL_NAMES.CAPTURE_STOP, async (args) => {
   });
 
   return {
-    summary: `Capture stopped. ${session?.stats.networkRequestCount || 0} API calls, ` +
+    summary:
+      `Capture stopped. ${session?.stats.networkRequestCount || 0} API calls, ` +
       `${session?.stats.correlationBundleCount || 0} correlations, ` +
       `${session?.stats.screenshotCount || 0} screenshots`,
     sessionId,
     stats: session?.stats,
-    duration: session ? (session.endTime! - session.startTime) : 0,
+    duration: session ? session.endTime! - session.startTime : 0,
   };
 });
 

@@ -26,16 +26,17 @@
 
 ### 1.1 Languages & Runtime
 
-| Choice | Why |
-|--------|-----|
+| Choice                                  | Why                                                                                                                                    |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | **TypeScript (strict mode)** everywhere | Type safety across extension + bridge + shared types. Same language both sides of Native Messaging. mcp-chrome uses this successfully. |
-| **Node.js >= 20** for bridge | Required by `@modelcontextprotocol/sdk`. LTS stability. Native ESM support. |
+| **Node.js >= 20** for bridge            | Required by `@modelcontextprotocol/sdk`. LTS stability. Native ESM support.                                                            |
 
 ### 1.2 Extension Build System: WXT
 
 **Choice**: [WXT](https://wxt.dev/) (Web Extension Toolkit)
 
 **Why WXT over raw Manifest V3 or Plasmo**:
+
 - WXT is framework-agnostic (we don't need Vue/React for our simple UI)
 - First-class Manifest V3 support with auto-generated manifest from code conventions
 - Built-in support for content scripts with `world: 'MAIN'` declaration
@@ -51,6 +52,7 @@
 ### 1.3 UI Framework: None (Vanilla TypeScript)
 
 **Why no framework for popup/replay page**:
+
 - **Popup**: Toggle button + settings form. ~200 lines of DOM. A framework adds 30KB+ for no benefit.
 - **Replay page**: The main UI component is `rrweb-player`, which is a Svelte component but exposes a framework-agnostic constructor API (`new Player({ target, props })`). We mount it directly. The API timeline panel beside it is a scrollable list with click handlers — vanilla TS with CSS is cleaner and faster than introducing React/Vue.
 
@@ -67,6 +69,7 @@
 **Version**: Latest stable (currently ^1.11.x)
 
 **Transports supported**:
+
 - **Streamable HTTP** (recommended) — extension tells bridge to start HTTP server, MCP clients connect to `http://127.0.0.1:PORT/mcp`
 - **stdio** — bridge is spawned as subprocess by MCP client, bridges stdio JSON-RPC to the HTTP server internally
 
@@ -74,16 +77,17 @@ This dual-transport approach is identical to mcp-chrome and is proven to work wi
 
 ### 1.6 Key Dependencies
 
-| Package | Version | Purpose | Size Impact |
-|---------|---------|---------|-------------|
-| `rrweb` (record only) | ^2.x | DOM recording in content script | ~45KB min+gz (record entry only) |
-| `rrweb-player` | ^2.x | Replay UI component | ~80KB min+gz (replay page only, not loaded during capture) |
-| `pixelmatch` | ^6.x | Pixel-level image comparison | ~2KB min+gz (zero deps) |
-| `@modelcontextprotocol/sdk` | ^1.11.x | MCP server protocol | Bridge only |
-| `fastify` | ^5.x | HTTP server for MCP | Bridge only |
-| `idb` | ^8.x | Promise-based IndexedDB wrapper | ~1.5KB min+gz |
+| Package                     | Version | Purpose                         | Size Impact                                                |
+| --------------------------- | ------- | ------------------------------- | ---------------------------------------------------------- |
+| `rrweb` (record only)       | ^2.x    | DOM recording in content script | ~45KB min+gz (record entry only)                           |
+| `rrweb-player`              | ^2.x    | Replay UI component             | ~80KB min+gz (replay page only, not loaded during capture) |
+| `pixelmatch`                | ^6.x    | Pixel-level image comparison    | ~2KB min+gz (zero deps)                                    |
+| `@modelcontextprotocol/sdk` | ^1.11.x | MCP server protocol             | Bridge only                                                |
+| `fastify`                   | ^5.x    | HTTP server for MCP             | Bridge only                                                |
+| `idb`                       | ^8.x    | Promise-based IndexedDB wrapper | ~1.5KB min+gz                                              |
 
 **What we are NOT using** (and why):
+
 - **No `mutation-summary`**: rrweb already handles smart mutation batching. Adding a parallel MutationObserver is redundant (see HIGHLEVEL doc, Design Decision #5).
 - **No `blockhash-core`**: Perceptual hashing adds a layer between "DOM changed" and "pixels changed" that isn't worth the complexity. rrweb events + pixelmatch is sufficient.
 - **No Vue/React/Svelte as framework**: See 1.3 above.
@@ -92,12 +96,12 @@ This dual-transport approach is identical to mcp-chrome and is proven to work wi
 
 ### 1.7 Monorepo Tooling
 
-| Tool | Purpose |
-|------|---------|
-| **pnpm workspaces** | Monorepo package management (proven by mcp-chrome) |
-| **tsup** | TypeScript bundling for bridge package (fast, zero-config) |
-| **WXT/Vite** | Extension build |
-| **vitest** | Unit testing (shared config, works with both WXT and tsup) |
+| Tool                | Purpose                                                    |
+| ------------------- | ---------------------------------------------------------- |
+| **pnpm workspaces** | Monorepo package management (proven by mcp-chrome)         |
+| **tsup**            | TypeScript bundling for bridge package (fast, zero-config) |
+| **WXT/Vite**        | Extension build                                            |
+| **vitest**          | Unit testing (shared config, works with both WXT and tsup) |
 
 ---
 
@@ -193,6 +197,7 @@ underpixel/
 ```
 
 **Key conventions**:
+
 - WXT uses `entrypoints/` directory convention to auto-detect background, content scripts, popup, and pages
 - Content scripts declare their `world` in the file via WXT's `export default defineContentScript({ world: 'MAIN' })` pattern
 - `lib/` contains all business logic, separated from WXT entry points for testability
@@ -339,7 +344,7 @@ export default defineContentScript({
   main() {
     // rrweb.record() + PerformanceObserver
     // window.postMessage to bridge
-  }
+  },
 });
 
 // content.ts
@@ -350,7 +355,7 @@ export default defineContentScript({
   main() {
     // window.addEventListener('message')
     // chrome.runtime.sendMessage() to background
-  }
+  },
 });
 ```
 
@@ -359,11 +364,13 @@ export default defineContentScript({
 ### 3.4 Service Worker Lifecycle (MV3)
 
 Manifest V3 service workers have aggressive idle timeouts:
+
 - **30 seconds** of inactivity → suspended
 - **5 minutes** maximum continuous activity → forced restart
 - **Exception**: Active `chrome.runtime.connectNative()` port keeps the worker alive indefinitely
 
 **Our strategy**:
+
 - The Native Messaging port to the bridge keeps the service worker alive during active MCP sessions
 - When no MCP client is connected, the service worker may suspend — this is fine, it restarts on next message
 - IndexedDB state persists across restarts — no in-memory-only state for capture data
@@ -382,48 +389,48 @@ interface UnderPixelDB {
   // Object Stores:
 
   sessions: {
-    key: string;              // UUID
+    key: string; // UUID
     value: CaptureSession;
     indexes: {
-      'by-start': number;     // startTime
-      'by-url': string;       // initialUrl
+      'by-start': number; // startTime
+      'by-url': string; // initialUrl
     };
   };
 
   networkRequests: {
-    key: string;              // requestId (from CDP)
+    key: string; // requestId (from CDP)
     value: NetworkRequest;
     indexes: {
-      'by-session': string;          // sessionId
+      'by-session': string; // sessionId
       'by-session-time': [string, number]; // [sessionId, timestamp] compound
-      'by-url-pattern': string;      // url (for filtering)
+      'by-url-pattern': string; // url (for filtering)
     };
   };
 
   rrwebEvents: {
-    key: number;              // auto-increment
+    key: number; // auto-increment
     value: StoredRrwebEvent;
     indexes: {
-      'by-session': string;          // sessionId
+      'by-session': string; // sessionId
       'by-session-time': [string, number]; // [sessionId, timestamp] compound
-      'by-type': number;             // EventType (for filtering)
+      'by-type': number; // EventType (for filtering)
     };
   };
 
   screenshots: {
-    key: string;              // UUID
+    key: string; // UUID
     value: StoredScreenshot;
     indexes: {
-      'by-session': string;          // sessionId
+      'by-session': string; // sessionId
       'by-session-time': [string, number]; // [sessionId, timestamp]
     };
   };
 
   correlationBundles: {
-    key: string;              // UUID
+    key: string; // UUID
     value: CorrelationBundle;
     indexes: {
-      'by-session': string;          // sessionId
+      'by-session': string; // sessionId
       'by-session-time': [string, number]; // [sessionId, timestamp]
     };
   };
@@ -436,8 +443,8 @@ interface UnderPixelDB {
 // ---- Session ----
 
 interface CaptureSession {
-  id: string;                    // UUID
-  startTime: number;             // Date.now()
+  id: string; // UUID
+  startTime: number; // Date.now()
   endTime?: number;
   initialUrl: string;
   initialTitle: string;
@@ -454,51 +461,51 @@ interface CaptureSession {
 
 interface CaptureConfig {
   // Network
-  includeStatic: boolean;           // default: false (XHR/fetch only)
-  excludeDomains: string[];         // default: analytics blocklist
-  includeDomains?: string[];        // if set, only capture these domains
-  maxResponseBodySize: number;      // default: 1MB
+  includeStatic: boolean; // default: false (XHR/fetch only)
+  excludeDomains: string[]; // default: analytics blocklist
+  includeDomains?: string[]; // if set, only capture these domains
+  maxResponseBodySize: number; // default: 1MB
 
   // Screenshots
-  screenshotsEnabled: boolean;      // default: true
+  screenshotsEnabled: boolean; // default: true
   maxScreenshotsPerSession: number; // default: 100
-  screenshotInterval: number;       // default: 500ms
+  screenshotInterval: number; // default: 500ms
   pixelDiffThreshold: 'auto' | number; // default: 'auto'
 
   // Correlation
-  correlationWindow: number;        // default: 500ms
+  correlationWindow: number; // default: 500ms
 
   // rrweb
   rrwebSampling: {
-    mousemove: number | false;      // default: 100 (ms throttle)
-    scroll: number;                 // default: 150 (ms throttle)
-    input: 'last';                  // default: 'last' (only final value)
+    mousemove: number | false; // default: 100 (ms throttle)
+    scroll: number; // default: 150 (ms throttle)
+    input: 'last'; // default: 'last' (only final value)
   };
-  maskInputs: boolean;             // default: false
-  maskTextSelector?: string;       // CSS selector for elements to mask
+  maskInputs: boolean; // default: false
+  maskTextSelector?: string; // CSS selector for elements to mask
 }
 
 // ---- Network ----
 
 interface NetworkRequest {
-  requestId: string;             // CDP requestId
+  requestId: string; // CDP requestId
   sessionId: string;
   url: string;
   method: string;
   status: 'pending' | 'complete' | 'error';
   statusCode?: number;
-  type: string;                  // 'XHR', 'Fetch', 'Document', etc.
+  type: string; // 'XHR', 'Fetch', 'Document', etc.
   mimeType?: string;
 
   requestHeaders?: Record<string, string>;
   requestBody?: string;
   responseHeaders?: Record<string, string>;
-  responseBody?: string;         // stored separately if > 100KB (see 4.3)
-  responseBodyRef?: string;      // key into responseBodies store
+  responseBody?: string; // stored separately if > 100KB (see 4.3)
+  responseBodyRef?: string; // key into responseBodies store
 
-  startTime: number;             // timestamp from CDP
+  startTime: number; // timestamp from CDP
   endTime?: number;
-  duration?: number;             // endTime - startTime
+  duration?: number; // endTime - startTime
 
   encodedDataLength?: number;
   errorText?: string;
@@ -509,46 +516,46 @@ interface NetworkRequest {
 interface StoredRrwebEvent {
   sessionId: string;
   timestamp: number;
-  type: number;                  // rrweb EventType enum value
-  data: any;                     // rrweb event data (serialized)
+  type: number; // rrweb EventType enum value
+  data: any; // rrweb event data (serialized)
 }
 
 // ---- Screenshots ----
 
 interface StoredScreenshot {
-  id: string;                    // UUID
+  id: string; // UUID
   sessionId: string;
   timestamp: number;
-  dataUrl: string;               // base64 PNG (or JPEG for compression)
+  dataUrl: string; // base64 PNG (or JPEG for compression)
   width: number;
   height: number;
   trigger: ScreenshotTrigger;
-  diffPercent?: number;          // pixelmatch result vs previous
+  diffPercent?: number; // pixelmatch result vs previous
 }
 
 type ScreenshotTrigger =
-  | 'manual'                     // MCP tool call
-  | 'dom-mutation'               // Layer 1 passed
-  | 'navigation'                 // URL change
-  | 'api-response';              // Correlated with API
+  | 'manual' // MCP tool call
+  | 'dom-mutation' // Layer 1 passed
+  | 'navigation' // URL change
+  | 'api-response'; // Correlated with API
 
 // ---- Correlation ----
 
 interface CorrelationBundle {
-  id: string;                    // UUID
+  id: string; // UUID
   sessionId: string;
-  timestamp: number;             // anchor timestamp (API response time)
-  trigger: string;               // e.g., "fetch response: GET /api/okrs"
-  apiCalls: string[];            // requestId references
-  rrwebEventIds: number[];       // StoredRrwebEvent auto-increment keys
-  screenshotId?: string;         // StoredScreenshot reference
+  timestamp: number; // anchor timestamp (API response time)
+  trigger: string; // e.g., "fetch response: GET /api/okrs"
+  apiCalls: string[]; // requestId references
+  rrwebEventIds: number[]; // StoredRrwebEvent auto-increment keys
+  screenshotId?: string; // StoredScreenshot reference
   domMutationSummary?: {
     addedNodes: number;
     removedNodes: number;
     textChanges: number;
     attributeChanges: number;
   };
-  correlation: string;           // Human-readable: "GET /api/users -> #user-table updated"
+  correlation: string; // Human-readable: "GET /api/users -> #user-table updated"
 }
 ```
 
@@ -559,14 +566,14 @@ Response bodies over 100KB are stored in a separate IndexedDB object store (`res
 ```typescript
 // Object Store
 responseBodies: {
-  key: string;              // same as requestId
+  key: string; // same as requestId
   value: {
     requestId: string;
     sessionId: string;
-    body: string;           // full response body
+    body: string; // full response body
     base64Encoded: boolean;
-  };
-};
+  }
+}
 ```
 
 Cap: 1MB per response body (same as mcp-chrome). Bodies exceeding this are truncated with a `[truncated at 1MB]` marker.
@@ -578,9 +585,9 @@ interface UnderPixelExport {
   version: 1;
   exportedAt: number;
   session: CaptureSession;
-  rrwebEvents: StoredRrwebEvent[];    // full event stream
-  networkRequests: NetworkRequest[];   // with inline response bodies
-  screenshots: StoredScreenshot[];     // base64 included
+  rrwebEvents: StoredRrwebEvent[]; // full event stream
+  networkRequests: NetworkRequest[]; // with inline response bodies
+  screenshots: StoredScreenshot[]; // base64 included
   correlationBundles: CorrelationBundle[];
   dependencyEdges?: DependencyEdge[]; // if computed
 }
@@ -596,6 +603,7 @@ interface UnderPixelExport {
 ### 5.1 Background Service Worker (`background.ts`)
 
 The orchestrator. Responsibilities:
+
 - Initialize and manage Native Messaging port to bridge
 - Manage chrome.debugger sessions for network capture
 - Receive rrweb events from content script, write to IndexedDB
@@ -605,6 +613,7 @@ The orchestrator. Responsibilities:
 - Manage capture session lifecycle
 
 **Initialization sequence**:
+
 ```
 1. Register chrome.debugger.onEvent listener (always, for CDP events)
 2. Register chrome.runtime.onMessage listener (for content script messages)
@@ -617,6 +626,7 @@ The orchestrator. Responsibilities:
 ### 5.2 Content Script — MAIN World (`content-recorder.ts`)
 
 Runs in page context. Minimal responsibilities:
+
 - Start/stop rrweb recording on command
 - Run `PerformanceObserver('layout-shift')` for visual change signals
 - Post events to ISOLATED world content script via `window.postMessage`
@@ -633,22 +643,26 @@ window.addEventListener('message', (e) => {
 
   if (e.data.action === 'start-recording') {
     const config = e.data.config;
-    stopFn = record({
-      emit(event, isCheckout) {
-        window.postMessage({
-          source: 'underpixel-event',
-          type: 'rrweb',
-          event,
-          isCheckout,
-        }, '*');
-      },
-      sampling: config.sampling,
-      maskAllInputs: config.maskInputs,
-      maskTextSelector: config.maskTextSelector,
-      blockSelector: '.underpixel-block',
-      slimDOMOptions: 'all',     // Remove comments, <head> cruft
-      recordAfter: 'DOMContentLoaded',
-    }) || null;
+    stopFn =
+      record({
+        emit(event, isCheckout) {
+          window.postMessage(
+            {
+              source: 'underpixel-event',
+              type: 'rrweb',
+              event,
+              isCheckout,
+            },
+            '*',
+          );
+        },
+        sampling: config.sampling,
+        maskAllInputs: config.maskInputs,
+        maskTextSelector: config.maskTextSelector,
+        blockSelector: '.underpixel-block',
+        slimDOMOptions: 'all', // Remove comments, <head> cruft
+        recordAfter: 'DOMContentLoaded',
+      }) || null;
   }
 
   if (e.data.action === 'stop-recording') {
@@ -660,12 +674,15 @@ window.addEventListener('message', (e) => {
 // PerformanceObserver for layout shifts
 const layoutShiftObserver = new PerformanceObserver((list) => {
   for (const entry of list.getEntries()) {
-    window.postMessage({
-      source: 'underpixel-event',
-      type: 'layout-shift',
-      value: (entry as any).value,
-      timestamp: performance.timeOrigin + entry.startTime,
-    }, '*');
+    window.postMessage(
+      {
+        source: 'underpixel-event',
+        type: 'layout-shift',
+        value: (entry as any).value,
+        timestamp: performance.timeOrigin + entry.startTime,
+      },
+      '*',
+    );
   }
 });
 layoutShiftObserver.observe({ type: 'layout-shift', buffered: false });
@@ -693,11 +710,14 @@ window.addEventListener('message', (e) => {
 // Listen for commands from background (start/stop recording)
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'underpixel-command') {
-    window.postMessage({
-      source: 'underpixel-control',
-      action: msg.action,       // 'start-recording' | 'stop-recording'
-      config: msg.config,
-    }, '*');
+    window.postMessage(
+      {
+        source: 'underpixel-control',
+        action: msg.action, // 'start-recording' | 'stop-recording'
+        config: msg.config,
+      },
+      '*',
+    );
     sendResponse({ ok: true });
   }
 });
@@ -709,7 +729,7 @@ References mcp-chrome's `network-capture-debugger.ts` pattern. Key adaptations:
 
 ```typescript
 class NetworkCapture {
-  private sessions = new Map<number, string>();  // tabId -> sessionId
+  private sessions = new Map<number, string>(); // tabId -> sessionId
   private db: IDBPDatabase<UnderPixelDB>;
 
   async start(tabId: number, sessionId: string, config: CaptureConfig): Promise<void> {
@@ -752,7 +772,9 @@ class NetworkCapture {
     // Fetch response body via CDP
     try {
       const { body, base64Encoded } = await cdpSession.sendCommand(
-        tabId, 'Network.getResponseBody', { requestId }
+        tabId,
+        'Network.getResponseBody',
+        { requestId },
       );
 
       // Enforce size limit
@@ -772,7 +794,6 @@ class NetworkCapture {
 
       // Notify correlation engine
       correlationEngine.onApiResponse(sessionId, requestId, Date.now());
-
     } catch (e) {
       // Response body may not be available (e.g., redirects, aborted)
     }
@@ -786,11 +807,11 @@ class NetworkCapture {
     }
     // 2. Check domain blocklist
     const domain = new URL(url).hostname;
-    if (config.excludeDomains.some(d => domain.endsWith(d))) {
+    if (config.excludeDomains.some((d) => domain.endsWith(d))) {
       return false;
     }
     // 3. Check domain allowlist (if set)
-    if (config.includeDomains && !config.includeDomains.some(d => domain.endsWith(d))) {
+    if (config.includeDomains && !config.includeDomains.some((d) => domain.endsWith(d))) {
       return false;
     }
     return true;
@@ -799,15 +820,23 @@ class NetworkCapture {
 ```
 
 **Default excluded domains** (analytics/tracking):
+
 ```typescript
 const DEFAULT_EXCLUDED_DOMAINS = [
-  'google-analytics.com', 'googletagmanager.com',
-  'analytics.google.com', 'mixpanel.com',
-  'segment.io', 'segment.com',
-  'hotjar.com', 'fullstory.com',
-  'sentry.io', 'bugsnag.com',
-  'newrelic.com', 'datadoghq.com',
-  'facebook.net', 'doubleclick.net',
+  'google-analytics.com',
+  'googletagmanager.com',
+  'analytics.google.com',
+  'mixpanel.com',
+  'segment.io',
+  'segment.com',
+  'hotjar.com',
+  'fullstory.com',
+  'sentry.io',
+  'bugsnag.com',
+  'newrelic.com',
+  'datadoghq.com',
+  'facebook.net',
+  'doubleclick.net',
   'adsservicegoogle.com',
 ];
 ```
@@ -899,6 +928,7 @@ class ScreenshotGate {
 Handles canvas operations that service workers cannot do (no DOM/Canvas API in service workers).
 
 **Responsibilities**:
+
 - Receive screenshot as data URL from background
 - Decode to canvas, extract ImageData
 - Run pixelmatch against previous screenshot for same session
@@ -932,9 +962,12 @@ async function handleDiff(sessionId: string, dataUrl: string): Promise<{ diffPer
   }
 
   const diffPixels = pixelmatch(
-    previous.data, currentData.data, null,
-    currentData.width, currentData.height,
-    { threshold: 0.1 }
+    previous.data,
+    currentData.data,
+    null,
+    currentData.width,
+    currentData.height,
+    { threshold: 0.1 },
   );
 
   const totalPixels = currentData.width * currentData.height;
@@ -949,6 +982,7 @@ async function loadImage(dataUrl: string): Promise<ImageBitmap> {
 ```
 
 **Offscreen document creation** (in background.ts):
+
 ```typescript
 // Create offscreen document once, reuse
 async function ensureOffscreenDocument() {
@@ -982,7 +1016,7 @@ async function initReplay(sessionId: string) {
   const bundles = await db.getAllFromIndex('correlationBundles', 'by-session', sessionId);
 
   // Convert StoredRrwebEvent back to rrweb eventWithTime format
-  const rrwebEvents = events.map(e => ({
+  const rrwebEvents = events.map((e) => ({
     type: e.type,
     data: e.data,
     timestamp: e.timestamp,
@@ -1122,24 +1156,19 @@ export function createMcpServer(host: NativeMessagingHost): McpServer {
 
   // Register all tools from shared schema definitions
   for (const schema of TOOL_SCHEMAS) {
-    server.tool(
-      schema.name,
-      schema.description,
-      schema.inputSchema,
-      async (params) => {
-        try {
-          const result = await host.callTool(schema.name, params);
-          return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-          };
-        } catch (error: any) {
-          return {
-            content: [{ type: 'text', text: `Error: ${error.message}` }],
-            isError: true,
-          };
-        }
+    server.tool(schema.name, schema.description, schema.inputSchema, async (params) => {
+      try {
+        const result = await host.callTool(schema.name, params);
+        return {
+          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+        };
+      } catch (error: any) {
+        return {
+          content: [{ type: 'text', text: `Error: ${error.message}` }],
+          isError: true,
+        };
       }
-    );
+    });
   }
 
   return server;
@@ -1151,15 +1180,14 @@ export function createMcpServer(host: NativeMessagingHost): McpServer {
 Follows mcp-chrome's pattern exactly. Writes a manifest JSON to the OS-specific Native Messaging Hosts directory.
 
 **Manifest written**:
+
 ```json
 {
   "name": "com.underpixel.bridge",
   "description": "UnderPixel Bridge - MCP server for visual-API correlation",
   "path": "/absolute/path/to/run_host.sh",
   "type": "stdio",
-  "allowed_origins": [
-    "chrome-extension://UNDERPIXEL_EXTENSION_ID/"
-  ]
+  "allowed_origins": ["chrome-extension://UNDERPIXEL_EXTENSION_ID/"]
 }
 ```
 
@@ -1181,16 +1209,16 @@ The wrapper scripts (`run_host.sh` / `run_host.bat`) handle Node.js discovery ac
 export default defineConfig({
   manifest: {
     name: 'UnderPixel',
-    description: 'Record, replay, and understand what\'s behind the pixels',
+    description: "Record, replay, and understand what's behind the pixels",
     permissions: [
-      'nativeMessaging',    // Bridge connection
-      'tabs',               // Tab info, captureVisibleTab
-      'activeTab',          // Access active tab
-      'scripting',          // Content script injection (for browser control tools)
-      'debugger',           // CDP network capture (REQUIRED)
-      'offscreen',          // Canvas image processing
-      'storage',            // chrome.storage.local for config/state
-      'webNavigation',      // URL change detection, frame enumeration
+      'nativeMessaging', // Bridge connection
+      'tabs', // Tab info, captureVisibleTab
+      'activeTab', // Access active tab
+      'scripting', // Content script injection (for browser control tools)
+      'debugger', // CDP network capture (REQUIRED)
+      'offscreen', // Canvas image processing
+      'storage', // chrome.storage.local for config/state
+      'webNavigation', // URL change detection, frame enumeration
     ],
     host_permissions: ['<all_urls>'],
   },
@@ -1198,6 +1226,7 @@ export default defineConfig({
 ```
 
 **Permissions NOT requested** (unlike mcp-chrome):
+
 - No `bookmarks`, `history` — not in scope
 - No `downloads` — not needed
 - No `contextMenus` — "Explain This Page" excluded from v1
@@ -1257,8 +1286,8 @@ class CorrelationEngine {
     const mutations = this.recentMutations.get(sessionId) || [];
 
     // Find DOM mutations within [apiTime, apiTime + window]
-    const correlated = mutations.filter(m =>
-      m.timestamp >= apiTime && m.timestamp <= apiTime + window
+    const correlated = mutations.filter(
+      (m) => m.timestamp >= apiTime && m.timestamp <= apiTime + window,
     );
 
     if (correlated.length === 0) return; // API response didn't cause visible DOM changes
@@ -1279,7 +1308,8 @@ class CorrelationEngine {
         textChanges: correlated.reduce((sum, m) => sum + m.texts, 0),
         attributeChanges: correlated.reduce((sum, m) => sum + m.attributes, 0),
       },
-      correlation: `${request.method} ${shortUrl(request.url)} -> ` +
+      correlation:
+        `${request.method} ${shortUrl(request.url)} -> ` +
         `${correlated.reduce((s, m) => s + m.adds, 0)} nodes added, ` +
         `${correlated.reduce((s, m) => s + m.texts, 0)} text changes`,
     };
@@ -1303,9 +1333,7 @@ When Claude Code asks "What API feeds the user table?", the `correlate` tool:
 
 ```typescript
 async function correlate(query: string, sessionId?: string): Promise<CorrelateResult> {
-  const session = sessionId
-    ? await db.get('sessions', sessionId)
-    : await getLatestSession();
+  const session = sessionId ? await db.get('sessions', sessionId) : await getLatestSession();
 
   // Strategy 1: Query is a CSS selector
   if (query.startsWith('#') || query.startsWith('.') || query.includes('[')) {
@@ -1321,15 +1349,15 @@ async function correlateByText(query: string, sessionId: string): Promise<Correl
 
   // Search network response bodies for the query text
   const requests = await db.getAllFromIndex('networkRequests', 'by-session', sessionId);
-  const matchingApis = requests.filter(r => {
+  const matchingApis = requests.filter((r) => {
     const body = r.responseBody || '';
     return body.toLowerCase().includes(queryLower);
   });
 
   // Search correlation bundles that reference these APIs
   const bundles = await db.getAllFromIndex('correlationBundles', 'by-session', sessionId);
-  const matchingBundles = bundles.filter(b =>
-    b.apiCalls.some(id => matchingApis.some(a => a.requestId === id))
+  const matchingBundles = bundles.filter((b) =>
+    b.apiCalls.some((id) => matchingApis.some((a) => a.requestId === id)),
   );
 
   return {
@@ -1390,7 +1418,7 @@ type ValueType = 'jwt' | 'uuid' | 'url' | 'token' | 'id';
 interface DependencyEdge {
   from: { requestId: string; url: string; method: string };
   to: { requestId: string; url: string; method: string };
-  via: string;          // truncated value that links them
+  via: string; // truncated value that links them
   valueType: ValueType;
   location: 'url' | 'header' | 'body'; // where in the target request
 }
@@ -1399,6 +1427,7 @@ interface DependencyEdge {
 ### 7.2 Performance
 
 The algorithm is O(n^2) over requests within a session. With configurable request caps:
+
 - 50 requests: ~1,225 comparisons, <10ms
 - 200 requests: ~19,900 comparisons, <100ms
 - 500 requests: ~124,750 comparisons, <500ms
@@ -1420,13 +1449,17 @@ export const TOOL_SCHEMAS = [
   // ──── Core (differentiator) ────
   {
     name: 'underpixel_correlate',
-    description: 'Find which API calls feed a specific UI element or content. ' +
+    description:
+      'Find which API calls feed a specific UI element or content. ' +
       'Query can be a CSS selector (#user-table), text content ("user table"), ' +
       'or element description. Returns matched API calls with correlation details.',
     inputSchema: {
       type: 'object',
       properties: {
-        query: { type: 'string', description: 'CSS selector, text content, or element description' },
+        query: {
+          type: 'string',
+          description: 'CSS selector, text content, or element description',
+        },
         sessionId: { type: 'string', description: 'Session ID (default: latest active session)' },
       },
       required: ['query'],
@@ -1434,7 +1467,8 @@ export const TOOL_SCHEMAS = [
   },
   {
     name: 'underpixel_timeline',
-    description: 'Get a chronological timeline of snapshot bundles with correlated ' +
+    description:
+      'Get a chronological timeline of snapshot bundles with correlated ' +
       'API calls + visual state changes. Returns correlation bundles ordered by timestamp.',
     inputSchema: {
       type: 'object',
@@ -1448,7 +1482,8 @@ export const TOOL_SCHEMAS = [
   },
   {
     name: 'underpixel_snapshot_at',
-    description: 'Get the visual state + API calls + DOM state at a specific moment. ' +
+    description:
+      'Get the visual state + API calls + DOM state at a specific moment. ' +
       'Returns the closest screenshot, active API calls, and DOM snapshot.',
     inputSchema: {
       type: 'object',
@@ -1463,7 +1498,8 @@ export const TOOL_SCHEMAS = [
   // ──── Network ────
   {
     name: 'underpixel_capture_start',
-    description: 'Start recording network traffic + DOM changes + visual state on the active tab. ' +
+    description:
+      'Start recording network traffic + DOM changes + visual state on the active tab. ' +
       'Records all XHR/fetch calls with full request/response details. ' +
       'Shows "Chrome is being controlled" banner while active.',
     inputSchema: {
@@ -1472,19 +1508,26 @@ export const TOOL_SCHEMAS = [
         filter: {
           type: 'object',
           properties: {
-            includeStatic: { type: 'boolean', description: 'Include CSS/JS/images (default: false)' },
+            includeStatic: {
+              type: 'boolean',
+              description: 'Include CSS/JS/images (default: false)',
+            },
             excludeDomains: { type: 'array', items: { type: 'string' } },
             includeDomains: { type: 'array', items: { type: 'string' } },
           },
         },
-        screenshotsEnabled: { type: 'boolean', description: 'Auto-capture screenshots (default: true)' },
+        screenshotsEnabled: {
+          type: 'boolean',
+          description: 'Auto-capture screenshots (default: true)',
+        },
         tabId: { type: 'number', description: 'Tab to capture (default: active tab)' },
       },
     },
   },
   {
     name: 'underpixel_capture_stop',
-    description: 'Stop capture and return a summary: API call count, correlation bundles found, ' +
+    description:
+      'Stop capture and return a summary: API call count, correlation bundles found, ' +
       'screenshots taken, and session ID for further queries.',
     inputSchema: {
       type: 'object',
@@ -1495,7 +1538,8 @@ export const TOOL_SCHEMAS = [
   },
   {
     name: 'underpixel_api_calls',
-    description: 'Query captured API calls. Returns method, URL, status, timing, ' +
+    description:
+      'Query captured API calls. Returns method, URL, status, timing, ' +
       'and optionally request/response bodies. Supports filtering by URL pattern, ' +
       'method, status code.',
     inputSchema: {
@@ -1505,14 +1549,18 @@ export const TOOL_SCHEMAS = [
         urlPattern: { type: 'string', description: 'Filter by URL substring or glob' },
         method: { type: 'string', description: 'Filter by HTTP method' },
         statusCode: { type: 'number', description: 'Filter by status code' },
-        includeBody: { type: 'boolean', description: 'Include request/response bodies (default: false, can be large)' },
+        includeBody: {
+          type: 'boolean',
+          description: 'Include request/response bodies (default: false, can be large)',
+        },
         limit: { type: 'number', description: 'Max results (default: 50)' },
       },
     },
   },
   {
     name: 'underpixel_api_dependencies',
-    description: 'Auto-detect API call chains by tracking value propagation. ' +
+    description:
+      'Auto-detect API call chains by tracking value propagation. ' +
       'Returns edge list showing how responses feed into subsequent requests ' +
       '(e.g., login token used in authorized API call).',
     inputSchema: {
@@ -1526,20 +1574,25 @@ export const TOOL_SCHEMAS = [
   // ──── Visual ────
   {
     name: 'underpixel_screenshot',
-    description: 'Take an on-demand screenshot of the current viewport. ' +
+    description:
+      'Take an on-demand screenshot of the current viewport. ' +
       'Always works regardless of auto-screenshot settings or limits.',
     inputSchema: {
       type: 'object',
       properties: {
         tabId: { type: 'number' },
-        fullPage: { type: 'boolean', description: 'Capture full page (default: false, viewport only)' },
+        fullPage: {
+          type: 'boolean',
+          description: 'Capture full page (default: false, viewport only)',
+        },
         selector: { type: 'string', description: 'CSS selector to capture specific element' },
       },
     },
   },
   {
     name: 'underpixel_dom_text',
-    description: 'Extract text content from elements matching a CSS selector. ' +
+    description:
+      'Extract text content from elements matching a CSS selector. ' +
       'Quick way to read page content without a full screenshot.',
     inputSchema: {
       type: 'object',
@@ -1552,7 +1605,8 @@ export const TOOL_SCHEMAS = [
   },
   {
     name: 'underpixel_replay',
-    description: 'Open the replay viewer in a new browser tab. Shows rrweb session replay ' +
+    description:
+      'Open the replay viewer in a new browser tab. Shows rrweb session replay ' +
       'with synchronized API timeline panel. Returns the replay tab URL.',
     inputSchema: {
       type: 'object',
@@ -1598,13 +1652,18 @@ export const TOOL_SCHEMAS = [
   },
   {
     name: 'underpixel_page_read',
-    description: 'Get an accessibility tree of visible elements on the page. ' +
+    description:
+      'Get an accessibility tree of visible elements on the page. ' +
       'Returns element types, text content, and interactive element identifiers.',
     inputSchema: {
       type: 'object',
       properties: {
         tabId: { type: 'number' },
-        filter: { type: 'string', enum: ['all', 'interactive'], description: 'Element filter (default: all)' },
+        filter: {
+          type: 'string',
+          enum: ['all', 'interactive'],
+          description: 'Element filter (default: all)',
+        },
       },
     },
   },
@@ -1650,15 +1709,15 @@ All tool responses follow a consistent structure optimized for LLM consumption:
 
 UnderPixel captures sensitive data by design (API responses, cookies visible in headers, page content). Key threats:
 
-| Threat | Risk | Mitigation |
-|--------|------|------------|
-| **Data exfiltration via bridge** | Bridge could be modified to send data externally | Bridge binds to `127.0.0.1` only. No outbound connections. Native Messaging manifest restricts to our extension ID. |
-| **Malicious MCP client reads sensitive data** | Any MCP client connected to the bridge can call tools | User explicitly configures MCP client — this is intentional access. Tool responses only return what's explicitly requested. |
-| **Leaked response bodies** | API responses stored in IndexedDB may contain PII, tokens | IndexedDB is sandboxed per-extension. Data stays on disk, never transmitted. Sessions can be deleted. Auth headers are captured but never logged to console. |
-| **Cross-extension attack** | Another extension tries to connect to our bridge | Native Messaging `allowed_origins` restricts to our extension ID only. |
-| **Content script pollution** | MAIN world script can be detected/interfered with by page | We namespace all postMessage with `source: 'underpixel-*'`. Minimal global footprint. |
-| **Bridge process hijacked** | Attacker replaces bridge binary | Bridge path is fixed in Native Messaging manifest. npm integrity checks protect the package. |
-| **Session export leaks data** | .underpixel files shared carelessly contain full API data | Export UI shows clear warning about sensitive data. Option to strip headers/bodies from export. |
+| Threat                                        | Risk                                                      | Mitigation                                                                                                                                                   |
+| --------------------------------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Data exfiltration via bridge**              | Bridge could be modified to send data externally          | Bridge binds to `127.0.0.1` only. No outbound connections. Native Messaging manifest restricts to our extension ID.                                          |
+| **Malicious MCP client reads sensitive data** | Any MCP client connected to the bridge can call tools     | User explicitly configures MCP client — this is intentional access. Tool responses only return what's explicitly requested.                                  |
+| **Leaked response bodies**                    | API responses stored in IndexedDB may contain PII, tokens | IndexedDB is sandboxed per-extension. Data stays on disk, never transmitted. Sessions can be deleted. Auth headers are captured but never logged to console. |
+| **Cross-extension attack**                    | Another extension tries to connect to our bridge          | Native Messaging `allowed_origins` restricts to our extension ID only.                                                                                       |
+| **Content script pollution**                  | MAIN world script can be detected/interfered with by page | We namespace all postMessage with `source: 'underpixel-*'`. Minimal global footprint.                                                                        |
+| **Bridge process hijacked**                   | Attacker replaces bridge binary                           | Bridge path is fixed in Native Messaging manifest. npm integrity checks protect the package.                                                                 |
+| **Session export leaks data**                 | .underpixel files shared carelessly contain full API data | Export UI shows clear warning about sensitive data. Option to strip headers/bodies from export.                                                              |
 
 ### 9.2 Data Handling Rules
 
@@ -1682,17 +1741,17 @@ UnderPixel captures sensitive data by design (API responses, cookies visible in 
 
 Each permission requested has a clear, necessary purpose:
 
-| Permission | Why Required | What Happens Without It |
-|------------|-------------|------------------------|
-| `debugger` | CDP network capture with response bodies | Cannot capture API response content — core feature broken |
-| `nativeMessaging` | Connect to bridge process | Cannot communicate with MCP clients |
-| `tabs` | Get tab info, captureVisibleTab | Cannot take screenshots or identify tabs |
-| `activeTab` | Access to current tab without broad host permissions | Would need broader permissions |
-| `scripting` | Inject helper scripts for click/fill/page-read tools | Browser control tools would not work |
-| `offscreen` | Canvas operations for pixelmatch | Cannot do pixel diffing for smart screenshots |
-| `storage` | Persist config and state flags | Config lost on service worker restart |
-| `webNavigation` | Detect URL changes, enumerate frames | Cannot detect navigation events for screenshot trigger |
-| `<all_urls>` (host) | Content scripts need to run on any page | Would only work on pre-declared domains |
+| Permission          | Why Required                                         | What Happens Without It                                   |
+| ------------------- | ---------------------------------------------------- | --------------------------------------------------------- |
+| `debugger`          | CDP network capture with response bodies             | Cannot capture API response content — core feature broken |
+| `nativeMessaging`   | Connect to bridge process                            | Cannot communicate with MCP clients                       |
+| `tabs`              | Get tab info, captureVisibleTab                      | Cannot take screenshots or identify tabs                  |
+| `activeTab`         | Access to current tab without broad host permissions | Would need broader permissions                            |
+| `scripting`         | Inject helper scripts for click/fill/page-read tools | Browser control tools would not work                      |
+| `offscreen`         | Canvas operations for pixelmatch                     | Cannot do pixel diffing for smart screenshots             |
+| `storage`           | Persist config and state flags                       | Config lost on service worker restart                     |
+| `webNavigation`     | Detect URL changes, enumerate frames                 | Cannot detect navigation events for screenshot trigger    |
+| `<all_urls>` (host) | Content scripts need to run on any page              | Would only work on pre-declared domains                   |
 
 ### 9.4 Bridge Security
 
@@ -1704,7 +1763,7 @@ Each permission requested has a clear, necessary purpose:
 
 ## 10. Implementation Plan
 
-### Phase 1: Skeleton + Network Capture + MCP (Days 1-2)
+### Phase 1: Skeleton + Network Capture + MCP (Days 1-2) ✅ COMPLETE
 
 **Goal**: Extension loads, bridge connects, one MCP tool works end-to-end.
 
@@ -1749,6 +1808,7 @@ Each permission requested has a clear, necessary purpose:
    - Toggle capture on/off, show connection status
 
 **Verification**:
+
 ```bash
 # 1. Build and install
 cd bridge && pnpm build && npm install -g .
@@ -1766,33 +1826,34 @@ cd extension && pnpm dev  # WXT dev mode with HMR
 #    Verify: see list of captured XHR/fetch requests with headers and bodies
 ```
 
-### Phase 2: rrweb Recording + Correlation (Days 3-4)
+### Phase 2: rrweb Recording + Correlation (Days 3-4) ✅ FUNCTIONALLY COMPLETE
 
 **Goal**: DOM recording works, correlation engine produces bundles.
 
 **Steps**:
 
-1. **Content scripts**
+1. ✅ **Content scripts**
    - `content-recorder.ts` (MAIN world): rrweb.record() + PerformanceObserver
    - `content.ts` (ISOLATED world): postMessage bridge to background
    - Wire: background sends start/stop commands, receives rrweb events
 
-2. **Recording manager**
-   - `lib/recording/session.ts`: session lifecycle, config management
-   - `lib/recording/events.ts`: receive rrweb events, write to IndexedDB
-   - Batch writes: accumulate events for 200ms, then bulk-put to IndexedDB
+2. ✅ **Recording manager** (different file structure than planned)
+   - `lib/recording/session.ts` → session lifecycle split across `tools/network.ts` (capture_start/stop) and `background.ts`
+   - `lib/recording/events.ts` → implemented as `lib/recording/event-batcher.ts` (200ms batched writes to IndexedDB)
+   - No standalone session manager module — session creation/config is inline in capture_start
 
-3. **Correlation engine**
+3. ✅ **Correlation engine**
    - `lib/correlation/engine.ts`: timestamp matching logic
-   - `lib/correlation/types.ts`: CorrelationBundle type
+   - `lib/correlation/types.ts` → types live in `packages/shared/src/types.ts` (CorrelationBundle, etc.)
    - Wire: network capture notifies engine on API response, engine checks for recent DOM mutations
 
-4. **Core MCP tools**
+4. ✅ **Core MCP tools**
    - `underpixel_correlate`: query by text/selector → find matching API calls
    - `underpixel_timeline`: return chronological bundles
    - `underpixel_capture_stop`: stop capture, return summary with correlation count
 
 **Verification**:
+
 ```bash
 # In Claude Code:
 # "Go to [any web app], start capture, click around, then tell me
@@ -1804,36 +1865,37 @@ cd extension && pnpm dev  # WXT dev mode with HMR
 # Verify: returns correlated API calls with DOM mutation summary
 ```
 
-### Phase 3: Smart Screenshots + Replay UI (Days 5-7)
+### Phase 3: Smart Screenshots + Replay UI (Days 5-7) — PARTIALLY COMPLETE
 
 **Goal**: Screenshots taken intelligently, replay page works.
 
 **Steps**:
 
-1. **Offscreen document**
+1. **Offscreen document** — NOT YET
    - `offscreen.html` + handler for pixelmatch diffing
    - Background creates offscreen doc on first screenshot need
 
-2. **Screenshot gate**
+2. **Screenshot gate** — NOT YET
    - `lib/screenshot/gate.ts`: 2-layer decision logic
    - `lib/screenshot/capture.ts`: captureVisibleTab wrapper with rate limiting
    - Wire: rrweb mutations + layout shifts → gate → offscreen diff → save
 
-3. **On-demand screenshot tool**
+3. ✅ **On-demand screenshot tool**
    - `underpixel_screenshot`: always works, bypasses gate limits
    - Support viewport and full-page (scroll-stitch from mcp-chrome pattern)
 
-4. **Replay page**
+4. **Replay page** — NOT YET (stub exists: `underpixel_replay` opens tab, but replay UI not built)
    - `replay.html` + `replay/main.ts`: mount rrweb-player
    - API timeline panel: scrollable list synced with player
    - Click API call → seek player; play → scroll timeline
    - `underpixel_replay` tool: opens replay tab, returns URL
 
-5. **Additional tools**
+5. ✅ **Additional tools**
    - `underpixel_snapshot_at`: nearest screenshot + API calls at timestamp
    - `underpixel_dom_text`: extract text via injected content script
 
 **Verification**:
+
 ```bash
 # 1. Start capture on a dynamic web app (dashboard, etc.)
 # 2. Interact with the page for 30 seconds
@@ -1844,33 +1906,33 @@ cd extension && pnpm dev  # WXT dev mode with HMR
 # Screenshots were taken automatically at visual change points
 ```
 
-### Phase 4: Browser Control + Dependency Graph + Export (Days 8-10)
+### Phase 4: Browser Control + Dependency Graph + Export (Days 8-10) — PARTIALLY COMPLETE
 
 **Goal**: Full tool surface, dependency detection, session export.
 
 **Steps**:
 
-1. **Browser control tools**
+1. ✅ **Browser control tools**
    - `underpixel_navigate`: chrome.tabs.update / chrome.tabs.create
    - `underpixel_interact`: inject click/fill/scroll/type helper scripts
    - `underpixel_page_read`: inject accessibility tree helper
-   - Reference mcp-chrome's helper script patterns
 
-2. **API dependency graph**
-   - `lib/dependency/graph.ts`: value propagation algorithm
-   - `underpixel_api_dependencies` tool: returns edge list
+2. ✅ **API dependency graph**
+   - Value propagation algorithm in `lib/tools/core.ts` (extractTrackableValues + walkJson)
+   - `underpixel_api_dependencies` tool: returns edge list with JWT/UUID/token/ID tracking
 
-3. **Session export/import**
+3. **Session export/import** — NOT YET
    - `lib/storage/export.ts`: gather all data → JSON → gzip → .underpixel
    - Export button in replay UI
    - Import: open .underpixel file → load into fresh IndexedDB session
 
-4. **Popup improvements**
-   - Show active session stats (request count, screenshot count)
-   - Domain filter configuration
-   - Session list with delete option
+4. ✅ **Popup improvements** (partial)
+   - Show active session stats (request count, screenshot count, correlations)
+   - Domain filter configuration — NOT YET
+   - Session list with delete option — NOT YET
 
 **Verification**:
+
 ```bash
 # 1. Claude Code: "Navigate to [login page], log in, then show me the auth flow"
 # → underpixel_navigate, underpixel_interact (fill + click)
@@ -1894,20 +1956,20 @@ cd extension && pnpm dev  # WXT dev mode with HMR
 
 ## 11. Edge Cases & Mitigations
 
-| Edge Case | Impact | Mitigation |
-|-----------|--------|------------|
-| **DevTools open while capturing** | chrome.debugger cannot attach if DevTools has Network panel open on same tab | Detect and show clear error: "Close DevTools or open it without Network panel". Auto-retry on debugger detach. |
-| **Service worker suspended mid-capture** | Capture state lost | All state in IndexedDB. On restart, check `captureActive` flag in chrome.storage.local, re-attach debugger, resume capture. Native Messaging port keeps SW alive during active sessions. |
-| **Page navigates during capture** | rrweb recording for old page ends, new page needs fresh recording | Listen for `webNavigation.onCommitted`. Stop rrweb on old page, inject + start on new page. Create navigation correlation bundle. CDP network capture continues across navigations (debugger attached to tab, not page). |
-| **Cross-origin iframes** | rrweb may not record iframe content | Use rrweb's `recordCrossOriginIframes: true`. Content scripts run in all frames (`all_frames: true` in WXT config). Some cross-origin iframes will still be opaque — acceptable limitation. |
-| **Very large API responses (>1MB)** | Storage bloat, slow tool responses | Truncate at 1MB with marker. Store summary (size, content-type, first 1KB) for all responses, full body only if under limit. |
-| **Rapid API calls (100+/sec)** | IndexedDB write bottleneck | Batch writes: accumulate for 200ms, bulk-put. For correlation, only process XHR/fetch (not static resources by default). |
-| **Long capture sessions (hours)** | Memory/storage exhaustion | Configurable `maxScreenshotsPerSession` (default 100). rrweb events streamed to IndexedDB, not held in memory. Network requests capped at configurable limit (default 500). Session auto-stop after configurable max time. |
-| **Multiple tabs open** | Which tab to capture? | Capture is per-tab, explicitly started on a specific tabId. Multiple simultaneous captures supported (separate sessions). |
-| **Extension update during capture** | Service worker replaced | Capture stops gracefully. User restarts. Future: save/restore capture state. |
-| **WebSocket traffic** | Not captured by `Network.requestWillBeSent` | Out of scope for v1. CDP supports `Network.webSocketFrameReceived` — can add in v2 if needed. |
-| **Response body unavailable** | Redirects, aborted requests, opaque responses | `Network.getResponseBody` may throw. Catch error, mark request as `bodyUnavailable: true`. Don't fail the whole capture. |
-| **pixelmatch size mismatch** | Viewport resized between screenshots | If dimensions differ, treat as 100% changed (always save). Reset previous-image reference. |
+| Edge Case                                | Impact                                                                       | Mitigation                                                                                                                                                                                                                 |
+| ---------------------------------------- | ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **DevTools open while capturing**        | chrome.debugger cannot attach if DevTools has Network panel open on same tab | Detect and show clear error: "Close DevTools or open it without Network panel". Auto-retry on debugger detach.                                                                                                             |
+| **Service worker suspended mid-capture** | Capture state lost                                                           | All state in IndexedDB. On restart, check `captureActive` flag in chrome.storage.local, re-attach debugger, resume capture. Native Messaging port keeps SW alive during active sessions.                                   |
+| **Page navigates during capture**        | rrweb recording for old page ends, new page needs fresh recording            | Listen for `webNavigation.onCommitted`. Stop rrweb on old page, inject + start on new page. Create navigation correlation bundle. CDP network capture continues across navigations (debugger attached to tab, not page).   |
+| **Cross-origin iframes**                 | rrweb may not record iframe content                                          | Use rrweb's `recordCrossOriginIframes: true`. Content scripts run in all frames (`all_frames: true` in WXT config). Some cross-origin iframes will still be opaque — acceptable limitation.                                |
+| **Very large API responses (>1MB)**      | Storage bloat, slow tool responses                                           | Truncate at 1MB with marker. Store summary (size, content-type, first 1KB) for all responses, full body only if under limit.                                                                                               |
+| **Rapid API calls (100+/sec)**           | IndexedDB write bottleneck                                                   | Batch writes: accumulate for 200ms, bulk-put. For correlation, only process XHR/fetch (not static resources by default).                                                                                                   |
+| **Long capture sessions (hours)**        | Memory/storage exhaustion                                                    | Configurable `maxScreenshotsPerSession` (default 100). rrweb events streamed to IndexedDB, not held in memory. Network requests capped at configurable limit (default 500). Session auto-stop after configurable max time. |
+| **Multiple tabs open**                   | Which tab to capture?                                                        | Capture is per-tab, explicitly started on a specific tabId. Multiple simultaneous captures supported (separate sessions).                                                                                                  |
+| **Extension update during capture**      | Service worker replaced                                                      | Capture stops gracefully. User restarts. Future: save/restore capture state.                                                                                                                                               |
+| **WebSocket traffic**                    | Not captured by `Network.requestWillBeSent`                                  | Out of scope for v1. CDP supports `Network.webSocketFrameReceived` — can add in v2 if needed.                                                                                                                              |
+| **Response body unavailable**            | Redirects, aborted requests, opaque responses                                | `Network.getResponseBody` may throw. Catch error, mark request as `bodyUnavailable: true`. Don't fail the whole capture.                                                                                                   |
+| **pixelmatch size mismatch**             | Viewport resized between screenshots                                         | If dimensions differ, treat as 100% changed (always save). Reset previous-image reference.                                                                                                                                 |
 
 ---
 
@@ -1938,6 +2000,7 @@ bridge/test/
 ```
 
 **Key testing patterns**:
+
 - Use `fake-indexeddb` for storage tests (same as mcp-chrome)
 - Mock `chrome.*` APIs with `@anthropic-ai/test-utils` or manual mocks
 - Correlation engine tests use synthetic event streams with known timestamps
@@ -1951,12 +2014,14 @@ bridge/test/
 ## E2E Test Checklist
 
 ### Setup
+
 - [ ] Build extension: `cd extension && pnpm build`
 - [ ] Build bridge: `cd bridge && pnpm build && npm install -g .`
 - [ ] Load extension in Chrome
 - [ ] Configure Claude Code with underpixel MCP server
 
 ### Network Capture
+
 - [ ] Start capture on a web app with API calls
 - [ ] Verify XHR/fetch requests captured with bodies
 - [ ] Verify static resources excluded by default
@@ -1964,34 +2029,40 @@ bridge/test/
 - [ ] Stop capture, verify summary
 
 ### Correlation
+
 - [ ] On a data-driven page, ask "what API feeds [visible element]"
 - [ ] Verify correct API calls identified
 - [ ] Verify correlation bundles have mutation summaries
 
 ### Screenshots
+
 - [ ] Verify auto-screenshots taken on visual changes
 - [ ] Verify screenshot limit respected
 - [ ] Verify on-demand screenshot works beyond limit
 - [ ] Verify pixel diff mode filters unchanged screenshots
 
 ### Replay
+
 - [ ] Open replay viewer
 - [ ] Verify rrweb playback matches original page
 - [ ] Verify API timeline synced with playback
 - [ ] Click API call → player seeks correctly
 
 ### Browser Control
+
 - [ ] Navigate to URL via MCP tool
 - [ ] Click element via MCP tool
 - [ ] Fill form field via MCP tool
 - [ ] Read page content via MCP tool
 
 ### Export/Import
+
 - [ ] Export session as .underpixel file
 - [ ] Verify file contains all data (events, requests, screenshots)
 - [ ] Import in fresh profile, verify replay works
 
 ### Edge Cases
+
 - [ ] Start capture → close DevTools → verify capture works
 - [ ] Start capture → navigate to new page → verify capture continues
 - [ ] Long session (5 min) → verify no memory issues

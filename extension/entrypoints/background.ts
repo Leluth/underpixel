@@ -2,18 +2,22 @@ export default defineBackground(() => {
   console.log('[UnderPixel] Background service worker started');
 
   // Register MAIN world content script for rrweb recording
-  chrome.scripting.registerContentScripts([{
-    id: 'underpixel-recorder',
-    matches: ['<all_urls>'],
-    js: ['content-recorder.js'],
-    runAt: 'document_idle',
-    world: 'MAIN',
-  }]).catch((err) => {
-    // May already be registered from a previous load
-    if (!String(err).includes('Duplicate script ID')) {
-      console.error('[UnderPixel] Failed to register content-recorder:', err);
-    }
-  });
+  chrome.scripting
+    .registerContentScripts([
+      {
+        id: 'underpixel-recorder',
+        matches: ['<all_urls>'],
+        js: ['content-recorder.js'],
+        runAt: 'document_idle',
+        world: 'MAIN',
+      },
+    ])
+    .catch((err) => {
+      // May already be registered from a previous load
+      if (!String(err).includes('Duplicate script ID')) {
+        console.error('[UnderPixel] Failed to register content-recorder:', err);
+      }
+    });
 
   // Import tool handlers (self-registering)
   import('../lib/tools/network');

@@ -1,4 +1,9 @@
-import { NativeMessage, NativeMessageType, ToolCallPayload, TOOL_CALL_TIMEOUT } from 'underpixel-shared';
+import {
+  NativeMessage,
+  NativeMessageType,
+  ToolCallPayload,
+  TOOL_CALL_TIMEOUT,
+} from 'underpixel-shared';
 
 interface PendingRequest {
   resolve: (value: unknown) => void;
@@ -127,7 +132,7 @@ export class NativeMessagingHost {
 
   /** Clean up all pending requests */
   destroy(): void {
-    for (const [id, pending] of this.pending) {
+    for (const [_id, pending] of this.pending) {
       clearTimeout(pending.timeout);
       pending.reject(new Error('Native host destroyed'));
     }

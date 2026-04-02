@@ -1,7 +1,8 @@
 import { register } from './register.js';
 
 // Only auto-register on global install
-const isGlobal = process.env.npm_config_global === 'true' ||
+const isGlobal =
+  process.env.npm_config_global === 'true' ||
   (process.env.PNPM_HOME && process.argv[1]?.includes('global'));
 
 if (isGlobal) {
@@ -13,7 +14,7 @@ if (isGlobal) {
 } else {
   console.log(
     'UnderPixel Bridge installed locally.\n' +
-    'For Native Messaging, install globally: npm install -g underpixel-bridge\n' +
-    'Or run: npx underpixel-bridge register',
+      'For Native Messaging, install globally: npm install -g underpixel-bridge\n' +
+      'Or run: npx underpixel-bridge register',
   );
 }

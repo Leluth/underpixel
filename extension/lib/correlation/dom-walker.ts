@@ -100,7 +100,9 @@ function matchNode(
       if (String(attrs.id ?? '') === pq.value) return 'id';
       break;
     case 'class': {
-      const classes = String(attrs.class ?? '').toLowerCase().split(/\s+/);
+      const classes = String(attrs.class ?? '')
+        .toLowerCase()
+        .split(/\s+/);
       if (classes.includes(pq.value)) return 'class';
       break;
     }
@@ -297,10 +299,7 @@ export function collectMatchedNodeValues(
  * Walks full snapshots (EventType=2) and incremental mutation adds (EventType=3, source=0).
  * Returns empty array for invalid/empty queries.
  */
-export function findDomElements(
-  query: string,
-  events: StoredRrwebEvent[],
-): DomMatch[] {
+export function findDomElements(query: string, events: StoredRrwebEvent[]): DomMatch[] {
   const pq = parseQuery(query);
   if (!pq) return [];
 

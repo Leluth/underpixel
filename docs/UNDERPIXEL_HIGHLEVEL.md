@@ -55,6 +55,7 @@ Snapshot Bundle @ T=1712345678000:
 ```
 
 Secondary differentiators:
+
 1. **Works in your real browser** — no special Chrome flags, no separate profiles. Cookies and auth just work. (chrome-devtools-mcp requires `--remote-debugging-port` with a separate profile, or Chrome 144+ `--autoConnect`)
 2. **Records AI agent actions** — when Claude Code navigates/clicks/fills via MCP, UnderPixel silently records everything. Users can replay what the AI did, with full API details. This is an audit/observability angle nobody else offers.
 3. **Focused tool surface** — ~12 MCP tools instead of 27 (mcp-chrome). Opinionated, not a Swiss army knife.
@@ -64,34 +65,34 @@ Secondary differentiators:
 
 ### Tools Evaluated
 
-| Tool | Stars | Network Bodies | Screenshots | Works in Real Browser | Visual-API Correlation | Status |
-|------|-------|---------------|-------------|----------------------|----------------------|--------|
-| **Claude in Chrome** (Anthropic official) | N/A | No | Yes | Yes | No | Active (beta) |
-| **ChromeDevTools/chrome-devtools-mcp** (Google) | ~32.8k | Yes | Yes | No (needs flags/separate profile) | No | Very Active |
-| **hangwin/mcp-chrome** | ~11.1k | Yes (Debugger mode) | Yes | Yes | No | Active |
-| **AgentDeskAI/browser-tools-mcp** | ~7.2k | Partial | Yes | Yes | No | **Abandoned** |
-| **Saik0s/mcp-browser-use** | ~917 | Yes (auto-identifies key calls) | Partial | No | Partial (skills concept) | Active |
-| **benjaminr/chrome-devtools-mcp** | ~293 | Yes (filterable) | No | No | No | Active |
-| **Eddym06/chrome-devTools-advanced-mcp** | ~4 | Best (HAR, replay, WebSocket) | Yes | No | No | Active |
-| **nicobailon/surf-cli** | ~373 | Yes + replay | Yes (annotated) | Yes | No | Active (not MCP) |
-| **UnderPixel** (this project) | — | Yes | Yes | Yes | **Yes** | Building |
+| Tool                                            | Stars  | Network Bodies                  | Screenshots     | Works in Real Browser             | Visual-API Correlation   | Status           |
+| ----------------------------------------------- | ------ | ------------------------------- | --------------- | --------------------------------- | ------------------------ | ---------------- |
+| **Claude in Chrome** (Anthropic official)       | N/A    | No                              | Yes             | Yes                               | No                       | Active (beta)    |
+| **ChromeDevTools/chrome-devtools-mcp** (Google) | ~32.8k | Yes                             | Yes             | No (needs flags/separate profile) | No                       | Very Active      |
+| **hangwin/mcp-chrome**                          | ~11.1k | Yes (Debugger mode)             | Yes             | Yes                               | No                       | Active           |
+| **AgentDeskAI/browser-tools-mcp**               | ~7.2k  | Partial                         | Yes             | Yes                               | No                       | **Abandoned**    |
+| **Saik0s/mcp-browser-use**                      | ~917   | Yes (auto-identifies key calls) | Partial         | No                                | Partial (skills concept) | Active           |
+| **benjaminr/chrome-devtools-mcp**               | ~293   | Yes (filterable)                | No              | No                                | No                       | Active           |
+| **Eddym06/chrome-devTools-advanced-mcp**        | ~4     | Best (HAR, replay, WebSocket)   | Yes             | No                                | No                       | Active           |
+| **nicobailon/surf-cli**                         | ~373   | Yes + replay                    | Yes (annotated) | Yes                               | No                       | Active (not MCP) |
+| **UnderPixel** (this project)                   | —      | Yes                             | Yes             | Yes                               | **Yes**                  | Building         |
 
 ### Key Gap Analysis vs mcp-chrome (closest competitor)
 
-| Capability | mcp-chrome | UnderPixel |
-|---|---|---|
-| Network capture with response bodies | Yes (Debugger mode) | Yes (chrome.debugger, referencing mcp-chrome patterns) |
-| Screenshots | Yes | Yes (captureVisibleTab, referencing mcp-chrome patterns) |
-| Network-to-DOM correlation | **No** | **Yes** |
-| DOM mutation tracking | **No** | **Yes** (rrweb) |
-| Visual change detection | **No** | **Yes** (2-layer system: rrweb + pixelmatch) |
-| Timeline/timestamp correlation | **No** | **Yes** |
-| Session replay | **No** | **Yes** (rrweb-player) |
-| API dependency graph | **No** | **Yes** |
-| AI action audit trail | **No** | **Yes** |
-| Session export/share | **No** | **Yes** (.underpixel files) |
-| Request cap | 100 hard limit | Configurable, IndexedDB-backed |
-| Tool count | 27 | ~12 (focused) |
+| Capability                           | mcp-chrome          | UnderPixel                                               |
+| ------------------------------------ | ------------------- | -------------------------------------------------------- |
+| Network capture with response bodies | Yes (Debugger mode) | Yes (chrome.debugger, referencing mcp-chrome patterns)   |
+| Screenshots                          | Yes                 | Yes (captureVisibleTab, referencing mcp-chrome patterns) |
+| Network-to-DOM correlation           | **No**              | **Yes**                                                  |
+| DOM mutation tracking                | **No**              | **Yes** (rrweb)                                          |
+| Visual change detection              | **No**              | **Yes** (2-layer system: rrweb + pixelmatch)             |
+| Timeline/timestamp correlation       | **No**              | **Yes**                                                  |
+| Session replay                       | **No**              | **Yes** (rrweb-player)                                   |
+| API dependency graph                 | **No**              | **Yes**                                                  |
+| AI action audit trail                | **No**              | **Yes**                                                  |
+| Session export/share                 | **No**              | **Yes** (.underpixel files)                              |
+| Request cap                          | 100 hard limit      | Configurable, IndexedDB-backed                           |
+| Tool count                           | 27                  | ~12 (focused)                                            |
 
 ### Why Not Just Use mcp-chrome?
 
@@ -153,37 +154,39 @@ Secondary differentiators:
 ```
 
 **Key architectural decision**: All logic lives in the Chrome extension. The bridge is a dumb pipe. This means:
+
 - Updating the extension (via Web Store auto-update) updates the logic
 - The npm bridge package rarely needs updating
 - The extension holds all state — no syncing issues
 
 ## Key Dependencies
 
-| Library | License | Purpose | Why This One |
-|---------|---------|---------|-------------|
-| **[rrweb](https://github.com/rrweb-io/rrweb)** | MIT | DOM snapshot + incremental recording + replay | 17k stars, mature, smart mutation batching (only records final value per batch, discards transient nodes) |
-| **[rrweb-player](https://github.com/rrweb-io/rrweb/tree/master/packages/rrweb-player)** | MIT | Session replay UI component | Built into rrweb ecosystem, has play/pause/seek |
-| **[mcp-chrome](https://github.com/hangwin/mcp-chrome)** | MIT | **Reference implementation** (not an npm dependency). We study and reference their patterns for: Debugger API network capture, screenshot pipeline, Native Messaging bridge architecture, Streamable HTTP MCP server | 11k stars, battle-tested patterns for the hard infrastructure problems |
-| **[@modelcontextprotocol/sdk](https://github.com/modelcontextprotocol/typescript-sdk)** | MIT | MCP server implementation | Official SDK |
-| **[pixelmatch](https://github.com/mapbox/pixelmatch)** | ISC | Pixel-level image comparison for screenshot gate | 150 lines, zero deps, stable algorithm, runs on raw ImageData in browser |
-| **[elkjs](https://github.com/kieler/elkjs)** | EPL-2.0 | Graph layout for API dependency DAG | 2k stars, computes node positions from edge list. For extension UI only, not v1 priority |
+| Library                                                                                 | License | Purpose                                                                                                                                                                                                              | Why This One                                                                                              |
+| --------------------------------------------------------------------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| **[rrweb](https://github.com/rrweb-io/rrweb)**                                          | MIT     | DOM snapshot + incremental recording + replay                                                                                                                                                                        | 17k stars, mature, smart mutation batching (only records final value per batch, discards transient nodes) |
+| **[rrweb-player](https://github.com/rrweb-io/rrweb/tree/master/packages/rrweb-player)** | MIT     | Session replay UI component                                                                                                                                                                                          | Built into rrweb ecosystem, has play/pause/seek                                                           |
+| **[mcp-chrome](https://github.com/hangwin/mcp-chrome)**                                 | MIT     | **Reference implementation** (not an npm dependency). We study and reference their patterns for: Debugger API network capture, screenshot pipeline, Native Messaging bridge architecture, Streamable HTTP MCP server | 11k stars, battle-tested patterns for the hard infrastructure problems                                    |
+| **[@modelcontextprotocol/sdk](https://github.com/modelcontextprotocol/typescript-sdk)** | MIT     | MCP server implementation                                                                                                                                                                                            | Official SDK                                                                                              |
+| **[pixelmatch](https://github.com/mapbox/pixelmatch)**                                  | ISC     | Pixel-level image comparison for screenshot gate                                                                                                                                                                     | 150 lines, zero deps, stable algorithm, runs on raw ImageData in browser                                  |
+| **[elkjs](https://github.com/kieler/elkjs)**                                            | EPL-2.0 | Graph layout for API dependency DAG                                                                                                                                                                                  | 2k stars, computes node positions from edge list. For extension UI only, not v1 priority                  |
 
 **Removed from consideration:**
+
 - ~~blockhash-core~~ — removed. rrweb's event stream + PerformanceObserver already filter 90%+ of noise at Layer 1. Adding a perceptual hash layer is over-engineering. Last updated ~2019.
 - ~~mutation-summary~~ — removed. rrweb already does smart mutation batching (only records final value per batch, discards transient nodes). Running a parallel MutationObserver is redundant. Last updated ~2017.
 
 ### Browser APIs Used
 
-| API | Purpose |
-|-----|---------|
-| `chrome.debugger` | Network capture with full request/response bodies (CDP: `Network.requestWillBeSent`, `Network.responseReceived`, `Network.getResponseBody`) |
-| `chrome.tabs.captureVisibleTab` | Screenshots. **Rate limited to 2 calls/sec** (hard Chrome limit since v92) |
-| `chrome.offscreen` | Offscreen document for canvas-based image processing (service workers can't use DOM/Canvas) |
-| `chrome.contextMenus` | Right-click menu items (future use) |
-| `chrome.runtime.connectNative` | Native Messaging to bridge |
-| `PerformanceObserver("layout-shift")` | Browser-native visual change signal |
-| `requestIdleCallback` | Detect when page is idle/stable |
-| `IndexedDB` | Store session data, rrweb events, network captures |
+| API                                   | Purpose                                                                                                                                     |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `chrome.debugger`                     | Network capture with full request/response bodies (CDP: `Network.requestWillBeSent`, `Network.responseReceived`, `Network.getResponseBody`) |
+| `chrome.tabs.captureVisibleTab`       | Screenshots. **Rate limited to 2 calls/sec** (hard Chrome limit since v92)                                                                  |
+| `chrome.offscreen`                    | Offscreen document for canvas-based image processing (service workers can't use DOM/Canvas)                                                 |
+| `chrome.contextMenus`                 | Right-click menu items (future use)                                                                                                         |
+| `chrome.runtime.connectNative`        | Native Messaging to bridge                                                                                                                  |
+| `PerformanceObserver("layout-shift")` | Browser-native visual change signal                                                                                                         |
+| `requestIdleCallback`                 | Detect when page is idle/stable                                                                                                             |
+| `IndexedDB`                           | Store session data, rrweb events, network captures                                                                                          |
 
 ## Feature Scope
 
@@ -221,6 +224,7 @@ Secondary differentiators:
 All network calls are **always recorded** via `chrome.debugger` (CDP). This is cheap (just metadata + bodies in IndexedDB) and is the foundation for correlation, dependency graphing, and API documentation.
 
 Default filter: **XHR/fetch only** (excludes images, CSS, JS, fonts, media). User can configure:
+
 - Include/exclude static resources
 - Include/exclude specific domains
 - Exclude analytics/tracking domains (configurable blocklist, sensible defaults like Google Analytics, Mixpanel, etc.)
@@ -234,6 +238,7 @@ Screenshots are expensive (`captureVisibleTab` is rate-limited to **2 calls/sec*
 #### Why 2 layers, not 4
 
 Originally designed as a 4-layer system (DOM triage -> stability wait -> perceptual hash -> pixel diff). Simplified after realizing:
+
 - rrweb already does smart mutation batching (only records final values, discards transient nodes) — no need for a separate MutationObserver + mutation-summary library
 - rrweb's event stream naturally serves as the "something changed" signal — no need for a separate DOM triage layer
 - blockhash-core (perceptual hashing) adds a layer between "something changed" and "did pixels change" that isn't worth the complexity — if Layer 1 says something changed and the page is stable, just run pixelmatch directly
@@ -241,12 +246,14 @@ Originally designed as a 4-layer system (DOM triage -> stability wait -> percept
 #### Layer 1: Change Detection + Stability Wait (Content Script, ~0 cost)
 
 **Change signals** (any of these sets a dirty flag):
+
 - rrweb emits incremental snapshot events (DOM changed)
 - `PerformanceObserver("layout-shift")` fires (elements moved)
 - URL/hash changed (navigation — always capture, skip Layer 2)
 - API response received (XHR/fetch, filtered — only if rrweb also reports DOM mutations within the debounce window)
 
 **Stability gate** (wait for all of these before proceeding):
+
 - Layout-shift events have stopped
 - `transitionend` / `animationend` fired (CSS animations settled)
 - `requestIdleCallback` triggered (browser is idle)
@@ -265,12 +272,12 @@ captureVisibleTab
 
 #### Screenshot Limits (configurable)
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `maxScreenshotsPerSession` | 100 | Hard cap per capture session (per capture start/stop cycle). Prevents runaway storage on long-lived pages. When reached, only on-demand screenshots via MCP tool are allowed. |
-| `screenshotInterval` | 500ms | Minimum time between screenshots (debounce). Cannot exceed Chrome's 2/sec hard limit regardless. |
-| `pixelDiffThreshold` | `"auto"` | `"auto"` (default): skip pixel diff entirely — if Layer 1 says DOM changed and page is stable, save the screenshot. This is simpler and sufficient in most cases. Set to a number (e.g., `0.01` = 1%) to enable pixelmatch comparison and only save when enough pixels changed. |
-| `screenshotsEnabled` | true | Master toggle. User can disable auto-screenshots entirely and rely only on on-demand capture via MCP tool or rrweb DOM replay. |
+| Setting                    | Default  | Description                                                                                                                                                                                                                                                                     |
+| -------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `maxScreenshotsPerSession` | 100      | Hard cap per capture session (per capture start/stop cycle). Prevents runaway storage on long-lived pages. When reached, only on-demand screenshots via MCP tool are allowed.                                                                                                   |
+| `screenshotInterval`       | 500ms    | Minimum time between screenshots (debounce). Cannot exceed Chrome's 2/sec hard limit regardless.                                                                                                                                                                                |
+| `pixelDiffThreshold`       | `"auto"` | `"auto"` (default): skip pixel diff entirely — if Layer 1 says DOM changed and page is stable, save the screenshot. This is simpler and sufficient in most cases. Set to a number (e.g., `0.01` = 1%) to enable pixelmatch comparison and only save when enough pixels changed. |
+| `screenshotsEnabled`       | true     | Master toggle. User can disable auto-screenshots entirely and rely only on on-demand capture via MCP tool or rrweb DOM replay.                                                                                                                                                  |
 
 **Note on defaults**: These are starting guesses — tune based on real-world testing across different site types (dashboards, SPAs, form-heavy apps, content pages). The important thing is that they're configurable. In `"auto"` mode, Layer 2 (pixelmatch) is skipped entirely, making it effectively a 1-layer system where rrweb + stability gate is the only decision point.
 
@@ -288,12 +295,12 @@ function extractTrackableValues(responseBody) {
   // Walk JSON recursively
   JSON.walk(responseBody, (key, value) => {
     if (typeof value === 'string') {
-      if (value.length > 20) values.add(value);           // Tokens, long strings
-      if (value.match(/^eyJ/)) values.add(value);         // JWT patterns
+      if (value.length > 20) values.add(value); // Tokens, long strings
+      if (value.match(/^eyJ/)) values.add(value); // JWT patterns
       if (value.match(/^[0-9a-f-]{36}$/i)) values.add(value); // UUIDs
     }
     if (typeof value === 'number' && key.match(/id$/i)) {
-      values.add(String(value));                           // Numeric IDs
+      values.add(String(value)); // Numeric IDs
     }
   });
   return values;
@@ -309,14 +316,15 @@ function findDependencies(completedRequests) {
       const searchSpace = [
         target.url,
         target.headers?.authorization,
-        JSON.stringify(target.requestBody)
+        JSON.stringify(target.requestBody),
       ].join(' ');
       for (const value of trackableValues) {
         if (searchSpace.includes(value)) {
           edges.push({
-            from: source.url, to: target.url,
+            from: source.url,
+            to: target.url,
             via: value.substring(0, 20) + '...',
-            type: guessType(value) // "bearer_token", "id", "session"
+            type: guessType(value), // "bearer_token", "id", "session"
           });
           break;
         }
@@ -343,36 +351,36 @@ For the extension UI, use [elkjs](https://github.com/kieler/elkjs) to compute la
 
 ### Core (the differentiator)
 
-| Tool | Description |
-|------|-------------|
-| `underpixel_correlate(query)` | "What API feeds the user table?" — cross-references DOM content with API responses |
-| `underpixel_timeline(timeRange?)` | Returns snapshot bundles with correlated API + visual state |
-| `underpixel_snapshot_at(timestamp)` | Screenshot + DOM state + API calls at a specific moment |
+| Tool                                | Description                                                                        |
+| ----------------------------------- | ---------------------------------------------------------------------------------- |
+| `underpixel_correlate(query)`       | "What API feeds the user table?" — cross-references DOM content with API responses |
+| `underpixel_timeline(timeRange?)`   | Returns snapshot bundles with correlated API + visual state                        |
+| `underpixel_snapshot_at(timestamp)` | Screenshot + DOM state + API calls at a specific moment                            |
 
 ### Network
 
-| Tool | Description |
-|------|-------------|
-| `underpixel_capture_start(filter?)` | Start recording network + DOM + visual state |
-| `underpixel_capture_stop()` | Stop capture, return correlated summary |
-| `underpixel_api_calls(filter?)` | Query captured API calls with full details (headers, bodies, timing) |
-| `underpixel_api_dependencies()` | Auto-detected API call chain / dependency graph |
+| Tool                                | Description                                                          |
+| ----------------------------------- | -------------------------------------------------------------------- |
+| `underpixel_capture_start(filter?)` | Start recording network + DOM + visual state                         |
+| `underpixel_capture_stop()`         | Stop capture, return correlated summary                              |
+| `underpixel_api_calls(filter?)`     | Query captured API calls with full details (headers, bodies, timing) |
+| `underpixel_api_dependencies()`     | Auto-detected API call chain / dependency graph                      |
 
 ### Visual
 
-| Tool | Description |
-|------|-------------|
+| Tool                               | Description                                            |
+| ---------------------------------- | ------------------------------------------------------ |
 | `underpixel_screenshot(selector?)` | On-demand screenshot (viewport, full page, or element) |
-| `underpixel_dom_text(selector)` | Current text content of elements |
-| `underpixel_replay(timeRange)` | Opens replay tab in browser, returns session data |
+| `underpixel_dom_text(selector)`    | Current text content of elements                       |
+| `underpixel_replay(timeRange)`     | Opens replay tab in browser, returns session data      |
 
 ### Browser Control (minimal, from mcp-chrome)
 
-| Tool | Description |
-|------|-------------|
-| `underpixel_navigate(url)` | Go to page |
-| `underpixel_interact(action)` | Click, fill, scroll |
-| `underpixel_page_read()` | Accessibility tree of visible elements |
+| Tool                          | Description                            |
+| ----------------------------- | -------------------------------------- |
+| `underpixel_navigate(url)`    | Go to page                             |
+| `underpixel_interact(action)` | Click, fill, scroll                    |
+| `underpixel_page_read()`      | Accessibility tree of visible elements |
 
 ## Extension UI
 
@@ -394,6 +402,7 @@ The Chrome extension opens a full tab (`chrome.runtime.getURL("replay.html")`) f
 ```
 
 Features:
+
 - Left pane: rrweb-player with play/pause/seek controls
 - Right pane: API call timeline, synced by timestamp
 - Click an API call -> replay seeks to that moment
@@ -434,6 +443,7 @@ The bridge auto-registers itself as a Chrome Native Messaging host via a postins
 ### Step 3: Configure MCP Client
 
 **Streamable HTTP (recommended):**
+
 ```json
 {
   "mcpServers": {
@@ -446,6 +456,7 @@ The bridge auto-registers itself as a Chrome Native Messaging host via a postins
 ```
 
 **stdio (alternative):**
+
 ```json
 {
   "mcpServers": {
@@ -464,6 +475,7 @@ Works with Claude Code, Claude Desktop, Cursor, VS Code Copilot, Windsurf, or an
 ### MCP Client Agnostic
 
 The MCP protocol is client-agnostic. The bridge speaks stdio JSON-RPC. Works with:
+
 - Claude Code
 - Claude Desktop
 - Cursor
@@ -475,15 +487,16 @@ No extra work needed — this is free from the architecture choice.
 
 ### Cross-Browser
 
-| Browser | Effort | Notes |
-|---------|--------|-------|
-| Chrome | Now | Primary target |
-| Edge | Near-free | Same Chromium APIs, same Web Store |
-| Arc, Brave, Opera | Near-free | Chromium-based |
-| Firefox | Medium (v2) | WebExtensions ~90% compatible. Main gap: `chrome.debugger` doesn't exist, use `browser.devtools.network` instead. Native Messaging slightly different manifest. |
-| Safari | Hard | Not planned. Different extension model entirely (Xcode/Swift). |
+| Browser           | Effort      | Notes                                                                                                                                                           |
+| ----------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Chrome            | Now         | Primary target                                                                                                                                                  |
+| Edge              | Near-free   | Same Chromium APIs, same Web Store                                                                                                                              |
+| Arc, Brave, Opera | Near-free   | Chromium-based                                                                                                                                                  |
+| Firefox           | Medium (v2) | WebExtensions ~90% compatible. Main gap: `chrome.debugger` doesn't exist, use `browser.devtools.network` instead. Native Messaging slightly different manifest. |
+| Safari            | Hard        | Not planned. Different extension model entirely (Xcode/Swift).                                                                                                  |
 
 **Key for cross-browser**: abstract browser-specific APIs behind interfaces from day one:
+
 ```typescript
 interface NetworkCapture {
   start(filter: CaptureFilter): void;
@@ -495,28 +508,30 @@ interface NetworkCapture {
 
 ### Data Scalability
 
-| Concern | Solution |
-|---------|----------|
-| Memory bloat from long sessions | Stream rrweb events to IndexedDB, not memory |
-| Large response bodies | Store in IndexedDB, return summaries to MCP, full body on-demand |
-| Query performance | Index by timestamp + URL pattern in IndexedDB |
-| Export file size | Compress `.underpixel` files with gzip (rrweb events compress ~10:1) |
-| Request cap | Configurable (unlike mcp-chrome's hard 100 limit) |
+| Concern                         | Solution                                                             |
+| ------------------------------- | -------------------------------------------------------------------- |
+| Memory bloat from long sessions | Stream rrweb events to IndexedDB, not memory                         |
+| Large response bodies           | Store in IndexedDB, return summaries to MCP, full body on-demand     |
+| Query performance               | Index by timestamp + URL pattern in IndexedDB                        |
+| Export file size                | Compress `.underpixel` files with gzip (rrweb events compress ~10:1) |
+| Request cap                     | Configurable (unlike mcp-chrome's hard 100 limit)                    |
 
 ## Build Phases
 
-### Phase 1: Core MVP (~4-5 days)
+### Phase 1: Core MVP ✅ COMPLETE
 
 **Goal**: Network capture + correlation + MCP tools working end-to-end.
 
-1. **Project scaffold** — Chrome extension (Manifest V3) + bridge npm package
-2. **Network capture** — `chrome.debugger` API for full request/response/headers/body capture (reference mcp-chrome's Debugger mode implementation)
-3. **rrweb integration** — `rrweb.record({ emit(event) {...} })` in content script, store events in IndexedDB
-4. **Correlation engine** — timestamp-based matching: group API responses with DOM mutations within configurable window (e.g., 500ms)
-5. **Basic screenshot** — `captureVisibleTab` on-demand (no smart gate yet)
-6. **Native Messaging bridge** — stdio <-> Native Messaging translator, auto-registration
-7. **MCP tools** — implement core tools: `capture_start`, `capture_stop`, `api_calls`, `screenshot`, `navigate`, `interact`, `page_read`, `correlate`
-8. **Basic popup** — toggle capture on/off
+1. ✅ **Project scaffold** — Chrome extension (Manifest V3, WXT) + bridge npm package (Fastify + Streamable HTTP)
+2. ✅ **Network capture** — `chrome.debugger` API for full request/response/headers/body capture, IndexedDB storage with body-ref separation
+3. ✅ **rrweb integration** — `rrweb.record()` in MAIN world content script, events batched and stored in IndexedDB
+4. ✅ **Correlation engine** — timestamp-based matching with configurable window (default 500ms), produces CorrelationBundle records
+5. ✅ **Basic screenshot** — `captureVisibleTab` on-demand (JPEG, 50% quality, IndexedDB storage)
+6. ✅ **Native Messaging bridge** — stdio translator with auto-registration, supports both Streamable HTTP and stdio MCP transport
+7. ✅ **MCP tools** — all 8 core tools implemented: `capture_start`, `capture_stop`, `api_calls`, `screenshot`, `navigate`, `interact`, `page_read`, `correlate`
+8. ✅ **Basic popup** — toggle capture on/off with live stats (API calls, screenshots, correlations)
+
+**Bonus** (implemented ahead of schedule): `timeline`, `snapshot_at`, `dom_text`, `replay`, `api_dependencies` tools also complete. Correlate tool includes attribute-value search (src, href, alt, etc.) and value-level correlation (traces DOM text to specific API response JSON fields).
 
 **Deliverable**: User can tell Claude Code "go to X page, capture network, tell me what API feeds the user list" and get a correlated answer.
 
@@ -638,6 +653,7 @@ MIT — matches both mcp-chrome and rrweb.
 ## Acknowledgments
 
 UnderPixel builds on the excellent work of:
+
 - [mcp-chrome](https://github.com/hangwin/mcp-chrome) by hangwin —
   browser MCP infrastructure, network capture, screenshot pipeline
 - [rrweb](https://github.com/rrweb-io/rrweb) —
@@ -650,43 +666,57 @@ correlation on top of their foundations.
 ## Design Decisions Log
 
 ### 1. Build on mcp-chrome + rrweb, not from scratch
+
 **Why**: mcp-chrome already solved Native Messaging bridge, network capture (dual WebRequest + Debugger backends), screenshot pipeline, full-page stitching, browser automation. Rebuilding that is months. rrweb solved efficient DOM recording with smart mutation batching. Both are MIT licensed. UnderPixel's novel contribution is the correlation layer.
 
 ### 2. All logic in extension, bridge is a dumb pipe
+
 **Why**: Extension auto-updates via Web Store. NPM package rarely needs updating. No state syncing issues. Single source of truth.
 
 ### 3. Chrome extension cannot host MCP server directly
+
 **Why**: Manifest V3 service workers cannot bind to network ports (no HTTP server, no WebSocket server). MCP requires either accepting incoming connections (Streamable HTTP) or being spawned as a subprocess (stdio). A separate bridge process is required. Every existing tool (Claude in Chrome, mcp-chrome, BrowserMCP) uses this pattern.
 
 ### 4. Event-driven capture, not interval-based
+
 **Why**: `captureVisibleTab` is rate-limited to 2/sec. Interval-based wastes the budget on unchanged states. Event-driven (API response -> DOM mutation -> stability -> hash check) captures only meaningful changes.
 
 ### 5. 2-layer screenshot gate (simplified from original 4-layer design)
+
 **Why**: Originally designed as 4 layers (DOM triage -> stability wait -> perceptual hash -> pixel diff). Simplified because rrweb already handles smart mutation batching — it only records final values per batch and discards transient nodes, making a separate MutationObserver + mutation-summary library redundant. blockhash-core (perceptual hashing, last updated ~2019) added complexity between "something changed" and "did pixels change" that wasn't justified. Final design: Layer 1 uses rrweb's event stream + PerformanceObserver as change signal + stability gate (free, already running), Layer 2 uses pixelmatch for pixel diff confirmation (~10ms). Simple, fewer dependencies, rrweb does the heavy lifting.
 
 ### 6. ~12 MCP tools, not 27
+
 **Why**: Focused > comprehensive. Users don't need bookmarks, history search, GIF recording, performance tracing from a correlation tool. Fewer tools = less token overhead in MCP tool definitions = more context for actual work.
 
 ### 7. Name: UnderPixel
+
 **Why**: Inspired by Undertale (pixel art aesthetic for branding). Evocative ("what's under the pixels") rather than descriptive. Short, memorable, works as package name (`underpixel`), repo name, extension name. Brand keywords (chrome, claude-code, mcp) go in repo description and GitHub topics, not the name — names age poorly with brand ties.
 
 ### 8. "Explain This Page" excluded from v1
+
 **Why**: MCP is pull-based — Claude Code calls tools, extension can't push to Claude Code. Workarounds exist (queue + poll, clipboard, file drop) but all feel janky. Revisit when MCP or Claude Code adds push/notification support.
 
 ### 9. IndexedDB for data storage, not in-memory
+
 **Why**: Long sessions with hundreds of API calls + rrweb events will exhaust memory. IndexedDB handles large datasets, persists across service worker restarts (Manifest V3 service workers have 30s idle timeout, 5min activity limit unless Native Messaging is active), and enables query by timestamp/URL pattern.
 
 ### 10. Correlation window approach (timestamp proximity)
+
 **Why**: Simple rule — group events within a configurable window (e.g., 500ms). "API response at T=1200ms + DOM mutations at T=1220ms + screenshot at T=1300ms = one correlated bundle." ~50 lines of logic. No complex data flow analysis needed for v1. The LLM (Claude Code) can do deeper reasoning on top of the correlated data.
 
 ### 11. chrome.debugger (CDP) required for network capture
+
 **Why**: The `chrome.webRequest` API can capture request headers/bodies but **cannot access response content**. Since "what data did this API return" is core to correlation, Debugger mode is required. Tradeoff: shows "Chrome is being controlled by automated test software" banner and conflicts with DevTools if open simultaneously. This is acceptable — mcp-chrome has the same limitation and 11k users live with it.
 
 ### 12. mcp-chrome is a reference implementation, not an npm dependency
+
 **Why**: mcp-chrome is a Chrome extension, not a reusable library. We study and reference their implementation patterns (Debugger API capture, Native Messaging bridge, screenshot stitching, Streamable HTTP MCP server) and write our own code following similar approaches. Their code is MIT licensed. rrweb, on the other hand, IS an npm dependency (`npm install rrweb`) used directly.
 
 ### 13. IndexedDB for storage is browser-native, no extra dependencies
+
 **Why**: IndexedDB is built into every browser — no library needed, no installation. It's the standard way Chrome extensions store large/structured data. Handles rrweb event streams, network capture data, and screenshots without exhausting memory. Persists across service worker restarts (important for Manifest V3's 30s idle timeout).
 
 ### 14. Installation follows mcp-chrome's proven pattern
+
 **Why**: `npm install -g` + load unpacked extension + MCP config is the established flow users of similar tools expect. Initially considered a simpler `npx` auto-download approach, but mcp-chrome's method is more robust (explicit global install, supports both Streamable HTTP and stdio transport, manual registration fallback for pnpm).
