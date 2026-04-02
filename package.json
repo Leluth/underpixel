@@ -1,0 +1,18 @@
+{
+  "name": "underpixel-monorepo",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --filter extension dev",
+    "build": "pnpm -r build",
+    "build:bridge": "pnpm --filter underpixel-bridge build",
+    "build:extension": "pnpm --filter underpixel-extension build",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild", "spawn-sync"]
+  }
+}

@@ -1,0 +1,36 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="./style.css" />
+    <title>UnderPixel</title>
+  </head>
+  <body>
+    <div id="app">
+      <header>
+        <h1>UnderPixel</h1>
+        <span id="status" class="status disconnected">Disconnected</span>
+      </header>
+
+      <section id="connection-section">
+        <p id="server-info">Bridge not connected</p>
+      </section>
+
+      <section id="capture-section">
+        <button id="capture-btn" class="btn" disabled>Start Capture</button>
+        <div id="capture-stats" class="stats hidden">
+          <div>API calls: <span id="stat-requests">0</span></div>
+          <div>Screenshots: <span id="stat-screenshots">0</span></div>
+          <div>Correlations: <span id="stat-correlations">0</span></div>
+        </div>
+      </section>
+
+      <section id="mcp-config" class="hidden">
+        <h3>MCP Configuration</h3>
+        <pre id="mcp-json"></pre>
+      </section>
+    </div>
+    <script src="./main.ts" type="module"></script>
+  </body>
+</html>
