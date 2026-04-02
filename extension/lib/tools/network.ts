@@ -9,6 +9,7 @@ import { toolRegistry } from './registry';
 import { startCapture, stopCapture, getSessionId } from '../network/capture';
 import { correlationEngine } from '../correlation/engine';
 import { db, getLatestSession } from '../storage/db';
+import { flushPendingEvents, clearSessionBuffer } from '../recording/event-batcher';
 
 // ---- capture_start ----
 
@@ -128,6 +129,9 @@ toolRegistry.register(TOOL_NAMES.CAPTURE_STOP, async (args) => {
     }
   }
 
+  // Flush any buffered rrweb events before closing the session
+  await flushPendingEvents();
+
   // Update session
   const database = await db();
   const session = await database.get('sessions', sessionId);
@@ -137,8 +141,9 @@ toolRegistry.register(TOOL_NAMES.CAPTURE_STOP, async (args) => {
     await database.put('sessions', session);
   }
 
-  // Clear correlation engine state
+  // Clear correlation engine state and event buffer
   correlationEngine.clearSession(sessionId);
+  clearSessionBuffer(sessionId);
 
   // Clear persisted capture state
   await chrome.storage.local.set({

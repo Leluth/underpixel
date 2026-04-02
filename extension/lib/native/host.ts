@@ -3,6 +3,7 @@ import {
   NativeMessageType,
   ToolCallPayload,
   NATIVE_HOST_NAME,
+  DEFAULT_PORT,
 } from 'underpixel-shared';
 import { toolRegistry } from '../tools/registry';
 
@@ -24,6 +25,12 @@ export function connectNative(): void {
 
     reconnectDelay = 500; // Reset on successful connection
     console.log('[UnderPixel] Connected to native host');
+
+    // Tell the bridge to start its HTTP server
+    sendToNative({
+      type: NativeMessageType.START,
+      payload: { port: DEFAULT_PORT },
+    });
   } catch (err) {
     console.error('[UnderPixel] Failed to connect to native host:', err);
     scheduleReconnect();
@@ -38,12 +45,12 @@ function handleMessage(message: NativeMessage) {
     return;
   }
 
-  // Bridge started HTTP server
-  if (message.type === NativeMessageType.START) {
+  // Bridge confirms HTTP server started
+  if (message.type === NativeMessageType.SERVER_STARTED) {
     const payload = message.payload as { port: number };
     serverPort = payload.port;
     chrome.storage.local.set({ serverPort: payload.port, connected: true });
-    console.log(`[UnderPixel] Bridge server on port ${payload.port}`);
+    console.log(`[UnderPixel] Bridge server ready on port ${payload.port}`);
     return;
   }
 

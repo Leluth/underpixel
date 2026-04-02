@@ -25,6 +25,9 @@ export default defineBackground(() => {
     connectNative();
   });
 
+  // Recover capture state after service worker restart
+  recoverCaptureState();
+
   // Clean up old sessions on startup
   import('../lib/storage/db').then(({ cleanupOldSessions }) => {
     cleanupOldSessions().then((count) => {
@@ -52,13 +55,87 @@ export default defineBackground(() => {
   });
 });
 
-async function handlePopupAction(action: string) {
-  const { toolRegistry } = await import('../lib/tools/registry');
+async function recoverCaptureState() {
+  try {
+    const state = await chrome.storage.local.get([
+      'captureActive',
+      'activeSessionId',
+      'activeTabId',
+    ]);
 
+    if (!state.captureActive || !state.activeSessionId || !state.activeTabId) return;
+
+    const tabId = state.activeTabId as number;
+    const sessionId = state.activeSessionId as string;
+
+    // Verify the tab still exists
+    try {
+      await chrome.tabs.get(tabId);
+    } catch {
+      // Tab is gone — mark session as stopped
+      console.log('[UnderPixel] Recovery: tab gone, stopping session');
+      const { db } = await import('../lib/storage/db');
+      const database = await db();
+      const session = await database.get('sessions', sessionId);
+      if (session && session.status === 'active') {
+        session.status = 'stopped';
+        session.endTime = Date.now();
+        await database.put('sessions', session);
+      }
+      await chrome.storage.local.set({
+        captureActive: false,
+        activeSessionId: null,
+        activeTabId: null,
+      });
+      return;
+    }
+
+    // Re-attach debugger and resume network capture
+    const { db } = await import('../lib/storage/db');
+    const database = await db();
+    const session = await database.get('sessions', sessionId);
+    if (!session || session.status !== 'active') return;
+
+    console.log(`[UnderPixel] Recovery: resuming capture on tab ${tabId}, session ${sessionId}`);
+    const { startCapture } = await import('../lib/network/capture');
+    await startCapture(tabId, sessionId, session.config);
+
+    // Re-start rrweb recording in the tab
+    try {
+      await chrome.tabs.sendMessage(tabId, {
+        type: 'underpixel-command',
+        action: 'start-recording',
+        config: {
+          sampling: session.config.rrwebSampling,
+          maskInputs: session.config.maskInputs,
+          maskTextSelector: session.config.maskTextSelector,
+        },
+      });
+    } catch {
+      // Content script may not be ready yet
+    }
+
+    console.log('[UnderPixel] Recovery: capture resumed');
+  } catch (err) {
+    console.error('[UnderPixel] Recovery failed:', err);
+    await chrome.storage.local.set({
+      captureActive: false,
+      activeSessionId: null,
+      activeTabId: null,
+    });
+  }
+}
+
+async function handlePopupAction(action: string) {
   if (action === 'start-capture') {
+    const { toolRegistry } = await import('../lib/tools/registry');
     await toolRegistry.execute('underpixel_capture_start', {});
   } else if (action === 'stop-capture') {
+    const { toolRegistry } = await import('../lib/tools/registry');
     await toolRegistry.execute('underpixel_capture_stop', {});
+  } else if (action === 'clear-all-data') {
+    const { clearAllData } = await import('../lib/storage/db');
+    await clearAllData();
   }
 }
 
@@ -80,9 +157,6 @@ async function handleContentMessage(
       isCheckout?: boolean;
     };
 
-    const { db } = await import('../lib/storage/db');
-    const database = await db();
-
     const stored = {
       sessionId,
       timestamp: payload.event.timestamp,
@@ -90,17 +164,8 @@ async function handleContentMessage(
       data: payload.event.data,
     };
 
-    await database.add('rrwebEvents', stored);
-
-    // Update session stats
-    const session = await database.get('sessions', sessionId);
-    if (session) {
-      session.stats.rrwebEventCount++;
-      await database.put('sessions', session);
-    }
-
-    // Notify correlation engine
-    const { correlationEngine } = await import('../lib/correlation/engine');
-    correlationEngine.onDomMutation(sessionId, stored);
+    // Batched write: accumulates for 200ms, then bulk-puts to IndexedDB
+    const { enqueueRrwebEvent } = await import('../lib/recording/event-batcher');
+    enqueueRrwebEvent(sessionId, stored);
   }
 }

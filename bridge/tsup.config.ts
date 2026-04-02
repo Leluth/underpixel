@@ -4,6 +4,7 @@ export default defineConfig({
   entry: {
     index: 'src/index.ts',
     cli: 'src/cli.ts',
+    'stdio-bridge': 'src/stdio-bridge.ts',
     'scripts/postinstall': 'src/scripts/postinstall.ts',
     'scripts/register': 'src/scripts/register.ts',
   },

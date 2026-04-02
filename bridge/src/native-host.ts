@@ -13,7 +13,7 @@ interface PendingRequest {
 export class NativeMessagingHost {
   private pending = new Map<string, PendingRequest>();
   private buffer = Buffer.alloc(0);
-  private onToolCallHandler?: (name: string, args: Record<string, unknown>) => Promise<unknown>;
+  private messageListeners: Array<(message: NativeMessage) => void> = [];
 
   constructor() {
     // stdin must be in raw binary mode
@@ -72,15 +72,15 @@ export class NativeMessagingHost {
       return;
     }
 
-    // Extension-initiated messages
-    switch (message.type) {
-      case NativeMessageType.PONG:
-        // Keepalive response, ignore
-        break;
-      default:
-        // Unknown message type from extension
-        break;
+    // Forward to listeners (for START, PONG, etc.)
+    for (const listener of this.messageListeners) {
+      listener(message);
     }
+  }
+
+  /** Register a listener for extension-initiated messages */
+  onMessage(listener: (message: NativeMessage) => void): void {
+    this.messageListeners.push(listener);
   }
 
   /** Send a message to the extension via stdout */

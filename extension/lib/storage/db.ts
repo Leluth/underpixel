@@ -156,6 +156,27 @@ export async function deleteSession(sessionId: string): Promise<void> {
   await tx.done;
 }
 
+/** Delete ALL data from ALL stores */
+export async function clearAllData(): Promise<void> {
+  const database = await db();
+  const storeNames: Array<keyof UnderPixelDB> = [
+    'sessions', 'networkRequests', 'responseBodies',
+    'rrwebEvents', 'screenshots', 'correlationBundles',
+  ];
+  const tx = database.transaction(storeNames, 'readwrite');
+  for (const name of storeNames) {
+    tx.objectStore(name).clear();
+  }
+  await tx.done;
+
+  // Also clear capture state
+  await chrome.storage.local.set({
+    captureActive: false,
+    activeSessionId: null,
+    activeTabId: null,
+  });
+}
+
 /** Clean up sessions older than maxAge (ms). Default: 7 days */
 export async function cleanupOldSessions(maxAge = 7 * 24 * 60 * 60 * 1000): Promise<number> {
   const database = await db();

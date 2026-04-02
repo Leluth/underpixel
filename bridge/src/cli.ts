@@ -21,6 +21,7 @@ underpixel-bridge — MCP server bridge for UnderPixel Chrome extension
 Commands:
   register    Register as Chrome Native Messaging host
   start       Start the bridge (used by Native Messaging, not usually called directly)
+  stdio       Start stdio MCP transport (proxies to running HTTP server)
 
 Options:
   -f, --force          Force re-registration
@@ -42,6 +43,13 @@ switch (command) {
     // Dynamic import to start the bridge
     await import('./index.js');
     break;
+
+  case 'stdio': {
+    // stdio MCP transport — proxies to running HTTP server
+    const { startStdioBridge } = await import('./stdio-bridge.js');
+    await startStdioBridge();
+    break;
+  }
 
   default:
     console.error(`Unknown command: ${command}`);

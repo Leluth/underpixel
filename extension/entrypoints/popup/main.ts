@@ -81,6 +81,31 @@ captureBtn.addEventListener('click', async () => {
   setTimeout(updateState, 500);
 });
 
+// Clear all data button
+const clearBtn = document.getElementById('clear-btn')! as HTMLButtonElement;
+clearBtn.addEventListener('click', async () => {
+  if (!confirm('Delete all captured sessions and data? This cannot be undone.')) return;
+
+  clearBtn.disabled = true;
+  clearBtn.textContent = 'Clearing...';
+
+  try {
+    await chrome.runtime.sendMessage({
+      type: 'underpixel-popup-action',
+      action: 'clear-all-data',
+    });
+    clearBtn.textContent = 'Cleared!';
+    setTimeout(() => {
+      clearBtn.textContent = 'Clear All Data';
+      clearBtn.disabled = false;
+    }, 1500);
+  } catch (err) {
+    console.error('Clear failed:', err);
+    clearBtn.textContent = 'Clear All Data';
+    clearBtn.disabled = false;
+  }
+});
+
 // Listen for storage changes
 chrome.storage.onChanged.addListener((changes) => {
   if (changes.connected || changes.serverPort || changes.captureActive) {
