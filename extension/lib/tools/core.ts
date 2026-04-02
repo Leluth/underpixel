@@ -1,6 +1,7 @@
 import { TOOL_NAMES } from 'underpixel-shared';
 import { toolRegistry } from './registry';
 import { db, getLatestSession } from '../storage/db';
+import { findDomElements } from '../correlation/dom-walker';
 
 // ---- correlate ----
 
@@ -15,39 +16,61 @@ toolRegistry.register(TOOL_NAMES.CORRELATE, async (args) => {
   }
 
   const database = await db();
-  const requests = await database.getAllFromIndex(
-    'networkRequests',
-    'by-session',
-    sessionId,
-  );
-  const bundles = await database.getAllFromIndex(
-    'correlationBundles',
-    'by-session',
-    sessionId,
-  );
+
+  // Parallel fetch: requests, bundles, rrweb events, and session config
+  const [requests, bundles, rrwebEvents, session] = await Promise.all([
+    database.getAllFromIndex('networkRequests', 'by-session', sessionId),
+    database.getAllFromIndex('correlationBundles', 'by-session', sessionId),
+    database.getAllFromIndex(
+      'rrwebEvents',
+      'by-session-time',
+      IDBKeyRange.bound([sessionId, 0], [sessionId, Date.now()]),
+    ),
+    database.get('sessions', sessionId),
+  ]);
+
+  const correlationWindowMs = session?.config?.correlationWindow ?? 500;
+
+  // Build request lookup map for O(1) access by requestId
+  const requestsById = new Map(requests.map((r) => [r.requestId, r]));
+
+  // ── Forward path: text search on API URLs + response bodies ──
 
   const queryLower = query.toLowerCase();
-
-  // Search API URLs and response bodies for the query.
-  // Split query into words — match if ALL words appear across URL + body combined.
-  // This handles queries like "pokemon list" matching URL "/pokemon" + body content.
   const queryWords = queryLower.split(/\s+/).filter((w) => w.length > 0);
 
-  const matchingApis = [];
+  const forwardMatchIds = new Set<string>();
+  const matchingApis: Array<{
+    requestId: string;
+    method: string;
+    url: string;
+    status?: number;
+    duration?: number;
+    matchedIn: string;
+    confidence: string;
+  }> = [];
+
+  // Batch-fetch response bodies stored by reference (avoids N+1 serial IDB reads)
+  const bodyRefs = requests
+    .filter((r) => r.status === 'complete' && !r.responseBody && r.responseBodyRef)
+    .map((r) => r.responseBodyRef!);
+  const bodyRecords = await Promise.all(
+    bodyRefs.map((ref) => database.get('responseBodies', ref)),
+  );
+  const bodyByRef = new Map(
+    bodyRefs.map((ref, i) => [ref, bodyRecords[i]?.body ?? '']),
+  );
+
   for (const r of requests) {
     if (r.status !== 'complete') continue;
 
-    let body = r.responseBody || '';
-    if (!body && r.responseBodyRef) {
-      const bodyRecord = await database.get('responseBodies', r.responseBodyRef);
-      body = bodyRecord?.body || '';
-    }
-
+    const body = r.responseBody || bodyByRef.get(r.responseBodyRef!) || '';
     const searchText = (r.url + ' ' + body).toLowerCase();
     const allWordsMatch = queryWords.every((w) => searchText.includes(w));
 
     if (allWordsMatch) {
       const urlMatch = queryWords.some((w) => r.url.toLowerCase().includes(w));
+      forwardMatchIds.add(r.requestId);
       matchingApis.push({
         requestId: r.requestId,
         method: r.method,
@@ -55,20 +78,71 @@ toolRegistry.register(TOOL_NAMES.CORRELATE, async (args) => {
         status: r.statusCode,
         duration: r.duration,
         matchedIn: urlMatch ? 'url' : 'body',
+        confidence: 'forward-only',
       });
     }
   }
 
-  // Find correlation bundles that reference these APIs
+  // ── Reverse path: DOM element search via rrweb snapshots + mutations ──
+
+  const domMatches = findDomElements(query, rrwebEvents);
+
+  // For each DOM match timestamp, find API requests that completed within ±1s
+  // (same window as snapshot_at tool) and that have correlation bundles
+  const reverseMatchIds = new Set<string>();
+  if (domMatches.length > 0) {
+    // Collect all DOM match timestamps for bundle matching
+    const domTimestamps = domMatches.map((m) => m.timestamp);
+
+    // Find bundles whose correlation window overlaps with DOM matches
+    for (const bundle of bundles) {
+      const bundleOverlaps = domTimestamps.some(
+        (t) => Math.abs(t - bundle.timestamp) <= correlationWindowMs,
+      );
+      if (bundleOverlaps) {
+        for (const apiId of bundle.apiCalls) {
+          reverseMatchIds.add(apiId);
+        }
+      }
+    }
+
+    // Add reverse-only matches that forward path didn't find
+    for (const reqId of reverseMatchIds) {
+      if (forwardMatchIds.has(reqId)) continue;
+      const r = requestsById.get(reqId);
+      if (!r || r.status !== 'complete') continue;
+      matchingApis.push({
+        requestId: r.requestId,
+        method: r.method,
+        url: r.url,
+        status: r.statusCode,
+        duration: r.duration,
+        matchedIn: 'dom-reverse',
+        confidence: 'reverse-only',
+      });
+    }
+  }
+
+  // ── Confidence scoring ──
+  // APIs found by BOTH paths get 'high' confidence
+  for (const api of matchingApis) {
+    if (forwardMatchIds.has(api.requestId) && reverseMatchIds.has(api.requestId)) {
+      api.confidence = 'high';
+    }
+  }
+
+  // ── Find correlation bundles that reference any matched API ──
+
   const matchingBundles = bundles.filter((b) =>
-    b.apiCalls.some((id) =>
-      matchingApis.some((a) => a.requestId === id),
-    ),
+    b.apiCalls.some((id) => forwardMatchIds.has(id) || reverseMatchIds.has(id)),
   );
 
   return {
     summary:
       `Found ${matchingApis.length} API calls matching "${query}"` +
+      (domMatches.length > 0
+        ? ` (${domMatches.length} DOM elements matched)`
+        : '') +
       (matchingBundles.length > 0
         ? `, ${matchingBundles.length} with DOM correlations`
         : ''),
@@ -80,7 +154,11 @@ toolRegistry.register(TOOL_NAMES.CORRELATE, async (args) => {
       trigger: b.trigger,
       correlation: b.correlation,
       domMutationSummary: b.domMutationSummary,
+      rrwebEventIds: domMatches
+        .filter((m) => Math.abs(m.timestamp - b.timestamp) <= correlationWindowMs)
+        .map((m) => m.rrwebEventId),
     })),
+    domMatches: domMatches.slice(0, 20),
   };
 });
 

@@ -16,8 +16,10 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
     name: TOOL_NAMES.CORRELATE,
     description:
       'Find which API calls feed a specific UI element or content. ' +
-      'Query can be a CSS selector (#user-table), text content ("user table"), ' +
-      'or element description. Returns matched API calls with correlation details.',
+      'Query can be a CSS selector (#user-table, .data-grid, [data-testid="users"]), ' +
+      'text content ("user table"), or element description. ' +
+      'Searches both API response bodies (forward) and rrweb DOM snapshots (reverse) ' +
+      'for high-confidence results. Returns matched API calls with confidence scoring.',
     inputSchema: {
       type: 'object',
       properties: {
