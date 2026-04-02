@@ -14,6 +14,7 @@
     "underpixel-shared": "workspace:*"
   },
   "devDependencies": {
+    "@types/chrome": "^0.1.38",
     "typescript": "^5.8.0",
     "vitest": "^3.1.0",
     "wxt": "^0.20.0"

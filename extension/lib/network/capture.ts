@@ -112,24 +112,25 @@ function shouldCapture(
 function handleDebuggerEvent(
   source: chrome.debugger.Debuggee,
   method: string,
-  params?: Record<string, unknown>,
+  params?: object,
 ) {
   const tabId = source.tabId;
   if (!tabId || !activeSessions.has(tabId) || !params) return;
+  const p = params as Record<string, unknown>;
   const sessionId = activeSessions.get(tabId)!;
 
   switch (method) {
     case 'Network.requestWillBeSent':
-      onRequestWillBeSent(tabId, sessionId, params);
+      onRequestWillBeSent(tabId, sessionId, p);
       break;
     case 'Network.responseReceived':
-      onResponseReceived(tabId, sessionId, params);
+      onResponseReceived(tabId, sessionId, p);
       break;
     case 'Network.loadingFinished':
-      onLoadingFinished(tabId, sessionId, params);
+      onLoadingFinished(tabId, sessionId, p);
       break;
     case 'Network.loadingFailed':
-      onLoadingFailed(sessionId, params);
+      onLoadingFailed(sessionId, p);
       break;
   }
 }

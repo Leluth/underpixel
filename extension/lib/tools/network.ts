@@ -110,8 +110,8 @@ toolRegistry.register(TOOL_NAMES.CAPTURE_STOP, async (args) => {
   } else {
     // Find active session
     const storage = await chrome.storage.local.get(['activeSessionId', 'activeTabId']);
-    sessionId = storage.activeSessionId;
-    tabId = storage.activeTabId;
+    sessionId = storage.activeSessionId as string | undefined;
+    tabId = storage.activeTabId as number | undefined;
   }
 
   if (!sessionId) throw new Error('No active capture session found');

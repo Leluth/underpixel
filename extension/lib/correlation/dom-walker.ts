@@ -34,6 +34,8 @@ export interface DomMatch {
 const MAX_MUTATION_ADDS = 2000;
 const MAX_MATCHES = 50;
 
+const CONTENT_ATTRS = ['src', 'href', 'alt', 'title', 'placeholder', 'value', 'action'] as const;
+
 // ---- Query Parser ----
 
 const ATTR_RE = /^\[([a-zA-Z_][\w:.-]*)(?:="([^"]*)")?\]$/;
@@ -109,13 +111,20 @@ function matchNode(
       }
       break;
     case 'text': {
-      const searchable = [
+      const parts = [
         String(attrs.id ?? ''),
         String(attrs.class ?? ''),
         String(attrs['aria-label'] ?? ''),
         node.tagName ?? '',
         textMap?.get(node.id) ?? '',
-      ].join(' ').toLowerCase();
+      ];
+      for (const a of CONTENT_ATTRS) {
+        if (a in attrs) parts.push(String(attrs[a]));
+      }
+      for (const key of Object.keys(attrs)) {
+        if (key.startsWith('data-')) parts.push(String(attrs[key]));
+      }
+      const searchable = parts.join(' ').toLowerCase();
       if (pq.words.every((w) => searchable.includes(w))) return 'text';
       break;
     }
@@ -177,6 +186,108 @@ function searchTree(
     buildTextMap(root, textMap);
   }
   walkTree(root, pq, textMap, results, eventId, timestamp, eventKind);
+}
+
+// ---- Value Extraction ----
+
+/** Minimum value length for value-level correlation (avoids noise from short common strings) */
+const MIN_VALUE_LENGTH = 4;
+
+/**
+ * Extract visible text values from an rrweb node subtree into a Set.
+ * Collects text content, content attribute values (src, href, alt, etc.),
+ * and data-* attribute values. Only values >= MIN_VALUE_LENGTH are kept.
+ */
+function extractNodeValues(root: unknown, out: Set<string>): void {
+  if (typeof root !== 'object' || root === null) return;
+  const sn = root as SNode;
+
+  if (sn.type === 3 && sn.textContent) {
+    const t = sn.textContent.trim();
+    if (t.length >= MIN_VALUE_LENGTH) out.add(t);
+  }
+
+  if (sn.type === 2) {
+    const attrs = sn.attributes ?? {};
+    for (const a of CONTENT_ATTRS) {
+      if (a in attrs) {
+        const v = String(attrs[a]).trim();
+        if (v.length >= MIN_VALUE_LENGTH) out.add(v);
+      }
+    }
+    for (const key of Object.keys(attrs)) {
+      if (key.startsWith('data-')) {
+        const v = String(attrs[key]).trim();
+        if (v.length >= MIN_VALUE_LENGTH) out.add(v);
+      }
+    }
+  }
+
+  if (sn.type === 0 || sn.type === 2) {
+    for (const child of sn.childNodes ?? []) extractNodeValues(child, out);
+  }
+}
+
+/** Build a Map<nodeId, SNode> from an rrweb tree in a single pass. */
+function buildNodeIndex(root: unknown, out: Map<number, SNode>): void {
+  if (typeof root !== 'object' || root === null) return;
+  const sn = root as SNode;
+  if (sn.id !== undefined) out.set(sn.id, sn);
+  if (sn.type === 0 || sn.type === 2) {
+    for (const child of sn.childNodes ?? []) buildNodeIndex(child, out);
+  }
+}
+
+/**
+ * Collect visible values only from the subtrees of matched DOM elements.
+ * Scopes extraction to matched nodes to avoid noise from full snapshots.
+ */
+export function collectMatchedNodeValues(
+  events: StoredRrwebEvent[],
+  matches: DomMatch[],
+): string[] {
+  if (matches.length === 0) return [];
+
+  const values = new Set<string>();
+
+  const matchesByEvent = new Map<number, number[]>();
+  for (const m of matches) {
+    const list = matchesByEvent.get(m.rrwebEventId) ?? [];
+    list.push(m.nodeId);
+    matchesByEvent.set(m.rrwebEventId, list);
+  }
+
+  for (const event of events) {
+    const eventId = (event as StoredRrwebEventWithId).id ?? 0;
+    const nodeIds = matchesByEvent.get(eventId);
+    if (!nodeIds) continue;
+
+    if (event.type === 2) {
+      const data = event.data as { node?: unknown };
+      if (!data?.node) continue;
+      // Build index once per snapshot, then O(1) lookups for all matched nodes
+      const index = new Map<number, SNode>();
+      buildNodeIndex(data.node, index);
+      for (const nodeId of nodeIds) {
+        const node = index.get(nodeId);
+        if (node) extractNodeValues(node, values);
+      }
+    } else if (event.type === 3) {
+      const data = event.data as { source?: number; adds?: Array<{ node?: unknown }> };
+      if (data?.source !== 0) continue;
+      // Mutation-adds are small subtrees — index them all together
+      const index = new Map<number, SNode>();
+      for (const add of data.adds ?? []) {
+        if (add.node) buildNodeIndex(add.node, index);
+      }
+      for (const nodeId of nodeIds) {
+        const node = index.get(nodeId);
+        if (node) extractNodeValues(node, values);
+      }
+    }
+  }
+
+  return [...values];
 }
 
 // ---- Public API ----

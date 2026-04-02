@@ -163,11 +163,11 @@ export async function deleteSession(sessionId: string): Promise<void> {
 /** Delete ALL data from ALL stores */
 export async function clearAllData(): Promise<void> {
   const database = await db();
-  const storeNames: Array<keyof UnderPixelDB> = [
+  const storeNames = [
     'sessions', 'networkRequests', 'responseBodies',
     'rrwebEvents', 'screenshots', 'correlationBundles',
-  ];
-  const tx = database.transaction(storeNames, 'readwrite');
+  ] as const;
+  const tx = database.transaction([...storeNames], 'readwrite');
   for (const name of storeNames) {
     tx.objectStore(name).clear();
   }

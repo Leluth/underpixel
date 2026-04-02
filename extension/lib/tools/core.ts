@@ -1,7 +1,46 @@
 import { TOOL_NAMES } from 'underpixel-shared';
 import { toolRegistry } from './registry';
 import { db, getLatestSession } from '../storage/db';
-import { findDomElements } from '../correlation/dom-walker';
+import { findDomElements, collectMatchedNodeValues } from '../correlation/dom-walker';
+
+// ---- Value-level correlation helpers ----
+
+/** Walk a JSON object once, indexing every leaf value → its JSON path(s). */
+function buildLeafMap(obj: unknown, out: Map<string, string[]>, path = ''): void {
+  if (obj === null || obj === undefined) return;
+
+  if (typeof obj === 'string') {
+    const list = out.get(obj);
+    if (list) list.push(path); else out.set(obj, [path]);
+    return;
+  }
+  if (typeof obj === 'number' || typeof obj === 'boolean') {
+    const s = String(obj);
+    const list = out.get(s);
+    if (list) list.push(path); else out.set(s, [path]);
+    return;
+  }
+  if (Array.isArray(obj)) {
+    for (let i = 0; i < obj.length; i++) {
+      buildLeafMap(obj[i], out, `${path}[${i}]`);
+    }
+    return;
+  }
+  if (typeof obj === 'object') {
+    for (const [key, val] of Object.entries(obj as Record<string, unknown>)) {
+      buildLeafMap(val, out, path ? `${path}.${key}` : key);
+    }
+  }
+}
+
+/** Result shape for a value-level correlation hit */
+interface ValueCorrelation {
+  domValue: string;
+  apiRequestId: string;
+  apiUrl: string;
+  apiMethod: string;
+  jsonPath: string;
+}
 
 // ---- correlate ----
 
@@ -60,11 +99,13 @@ toolRegistry.register(TOOL_NAMES.CORRELATE, async (args) => {
   const bodyByRef = new Map(
     bodyRefs.map((ref, i) => [ref, bodyRecords[i]?.body ?? '']),
   );
+  const resolveBody = (r: typeof requests[number]) =>
+    r.responseBody || bodyByRef.get(r.responseBodyRef!) || '';
 
   for (const r of requests) {
     if (r.status !== 'complete') continue;
 
-    const body = r.responseBody || bodyByRef.get(r.responseBodyRef!) || '';
+    const body = resolveBody(r);
     const searchText = (r.url + ' ' + body).toLowerCase();
     const allWordsMatch = queryWords.every((w) => searchText.includes(w));
 
@@ -137,6 +178,61 @@ toolRegistry.register(TOOL_NAMES.CORRELATE, async (args) => {
     b.apiCalls.some((id) => forwardMatchIds.has(id) || reverseMatchIds.has(id)),
   );
 
+  // ── Value-level correlation: match DOM text to API response JSON fields ──
+  const valueCorrelations: ValueCorrelation[] = [];
+
+  if (domMatches.length > 0 && requests.length > 0) {
+    const domValues = collectMatchedNodeValues(rrwebEvents, domMatches);
+
+    if (domValues.length > 0 && domValues.length <= 500) {
+      const allMatchedIds = new Set([...forwardMatchIds, ...reverseMatchIds]);
+      const apisToSearch = requests
+        .filter((r) => r.status === 'complete')
+        .sort((a, b) => (allMatchedIds.has(b.requestId) ? 1 : 0) - (allMatchedIds.has(a.requestId) ? 1 : 0))
+        .slice(0, 30);
+
+      const seen = new Set<string>();
+      const domValueSet = new Set(domValues);
+
+      for (const r of apisToSearch) {
+        if (valueCorrelations.length >= 50) break;
+        const body = resolveBody(r);
+        if (!body) continue;
+
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(body);
+        } catch {
+          continue;
+        }
+
+        // Walk JSON once per API → O(nodes), then probe domValues via map lookup
+        const leafMap = new Map<string, string[]>();
+        buildLeafMap(parsed, leafMap);
+
+        for (const domValue of domValueSet) {
+          if (valueCorrelations.length >= 50) break;
+          const paths = leafMap.get(domValue);
+          if (!paths) continue;
+
+          for (const jsonPath of paths) {
+            const key = `${domValue}\0${r.requestId}\0${jsonPath}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+
+            valueCorrelations.push({
+              domValue: domValue.length > 80 ? domValue.substring(0, 80) + '...' : domValue,
+              apiRequestId: r.requestId,
+              apiUrl: r.url,
+              apiMethod: r.method,
+              jsonPath,
+            });
+          }
+        }
+      }
+    }
+  }
+
   return {
     summary:
       `Found ${matchingApis.length} API calls matching "${query}"` +
@@ -145,6 +241,9 @@ toolRegistry.register(TOOL_NAMES.CORRELATE, async (args) => {
         : '') +
       (matchingBundles.length > 0
         ? `, ${matchingBundles.length} with DOM correlations`
+        : '') +
+      (valueCorrelations.length > 0
+        ? `, ${valueCorrelations.length} value-level matches`
         : ''),
     query,
     sessionId,
@@ -159,6 +258,7 @@ toolRegistry.register(TOOL_NAMES.CORRELATE, async (args) => {
         .map((m) => m.rrwebEventId),
     })),
     domMatches: domMatches.slice(0, 20),
+    valueCorrelations,
   };
 });
 
@@ -315,6 +415,17 @@ toolRegistry.register(TOOL_NAMES.API_DEPENDENCIES, async (args) => {
     .filter((r) => r.status === 'complete')
     .sort((a, b) => a.startTime - b.startTime);
 
+  // Batch-fetch referenced response bodies (avoids N serial IDB reads)
+  const depBodyRefs = completed
+    .filter((r) => !r.responseBody && r.responseBodyRef)
+    .map((r) => r.responseBodyRef!);
+  const depBodyRecords = await Promise.all(
+    depBodyRefs.map((ref) => database.get('responseBodies', ref)),
+  );
+  const depBodyByRef = new Map(
+    depBodyRefs.map((ref, i) => [ref, depBodyRecords[i]?.body ?? '']),
+  );
+
   const edges: Array<{
     from: { url: string; method: string };
     to: { url: string; method: string };
@@ -324,11 +435,7 @@ toolRegistry.register(TOOL_NAMES.API_DEPENDENCIES, async (args) => {
 
   for (let i = 0; i < completed.length; i++) {
     const source = completed[i];
-    let body = source.responseBody || '';
-    if (!body && source.responseBodyRef) {
-      const bodyRecord = await database.get('responseBodies', source.responseBodyRef);
-      body = bodyRecord?.body || '';
-    }
+    const body = source.responseBody || depBodyByRef.get(source.responseBodyRef!) || '';
     if (!body) continue;
 
     const trackable = extractTrackableValues(body);

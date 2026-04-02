@@ -41,7 +41,7 @@ toolRegistry.register(TOOL_NAMES.NAVIGATE, async (args) => {
     let timeoutId: ReturnType<typeof setTimeout>;
     const listener = (
       updatedTabId: number,
-      changeInfo: chrome.tabs.TabChangeInfo,
+      changeInfo: chrome.tabs.OnUpdatedInfo,
     ) => {
       if (updatedTabId === finalTabId && changeInfo.status === 'complete') {
         clearTimeout(timeoutId);

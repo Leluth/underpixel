@@ -44,10 +44,8 @@ export default defineContentScript({
               maskTextSelector: data.config?.maskTextSelector,
               blockClass: 'underpixel-block',
               slimDOMOptions: 'all',
-              errorHandler: (e) => {
-                // Suppress rrweb internal errors (e.g., matches() on non-Element nodes)
-                // to prevent console noise on complex pages
-              },
+              // errorHandler exists at runtime but is missing from this rrweb alpha's types
+              ...({ errorHandler(_e: unknown) {} } as any),
               recordAfter: 'DOMContentLoaded',
             }) || null;
 
