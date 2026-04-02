@@ -1,26 +1,23 @@
-import Fastify from 'fastify';
+import Fastify, { FastifyRequest, FastifyReply } from 'fastify';
 import cors from '@fastify/cors';
-import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import { Server as McpServerBase } from '@modelcontextprotocol/sdk/server/index.js';
 import {
   ListToolsRequestSchema,
   CallToolRequestSchema,
+  isInitializeRequest,
 } from '@modelcontextprotocol/sdk/types.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { randomUUID } from 'node:crypto';
 import { TOOL_SCHEMAS } from 'underpixel-shared';
 import { NativeMessagingHost } from './native-host.js';
 
-export async function createServer(host: NativeMessagingHost, port: number) {
-  const app = Fastify({ logger: false });
-  await app.register(cors, { origin: true });
-
-  // ---- MCP Server (low-level, supports raw JSON Schema) ----
-  const mcpServer = new Server(
+function createMcpServer(host: NativeMessagingHost): McpServerBase {
+  const server = new McpServerBase(
     { name: 'underpixel', version: '0.1.0' },
     { capabilities: { tools: {} } },
   );
 
-  // List tools — return raw JSON schemas directly
-  mcpServer.setRequestHandler(ListToolsRequestSchema, async () => ({
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: TOOL_SCHEMAS.map((s) => ({
       name: s.name,
       description: s.description,
@@ -28,8 +25,7 @@ export async function createServer(host: NativeMessagingHost, port: number) {
     })),
   }));
 
-  // Call tool — proxy to extension via native messaging
-  mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
+  server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
     try {
       const result = await host.callTool(name, args || {});
@@ -50,52 +46,119 @@ export async function createServer(host: NativeMessagingHost, port: number) {
     }
   });
 
-  // Transport map for session management
+  return server;
+}
+
+export async function createServer(host: NativeMessagingHost, port: number) {
+  const app = Fastify({ logger: false });
+  await app.register(cors, {
+    origin: (_origin, cb) => cb(null, true),
+    methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
+  });
+
   const transports = new Map<string, StreamableHTTPServerTransport>();
 
   // ---- Routes ----
-  app.get('/ping', async () => ({ status: 'ok', message: 'pong' }));
 
-  // Streamable HTTP MCP endpoint
-  app.post('/mcp', async (request, reply) => {
-    const sessionId = (request.headers['mcp-session-id'] as string) || undefined;
-
-    let transport: StreamableHTTPServerTransport;
-    if (sessionId && transports.has(sessionId)) {
-      transport = transports.get(sessionId)!;
-    } else {
-      // Generate session ID upfront to avoid timing gaps
-      const newId = crypto.randomUUID();
-      transport = new StreamableHTTPServerTransport({ sessionIdGenerator: () => newId });
-      transports.set(newId, transport);
-      transport.onclose = () => transports.delete(newId);
-      await mcpServer.connect(transport);
-    }
-
-    const body = request.body as Record<string, unknown>;
-    await transport.handleRequest(body, request.raw, reply.raw);
+  app.get('/ping', async (_req: FastifyRequest, reply: FastifyReply) => {
+    reply.status(200).send({ status: 'ok', message: 'pong' });
   });
 
-  // GET for SSE stream (Streamable HTTP spec)
-  app.get('/mcp', async (request, reply) => {
-    const sessionId = request.headers['mcp-session-id'] as string;
-    const transport = sessionId ? transports.get(sessionId) : undefined;
-    if (!transport) {
-      reply.code(400).send({ error: 'No active session. Send an initialize request first.' });
+  // MCP POST — following mcp-chrome's exact pattern
+  app.post('/mcp', async (request, reply) => {
+    const sessionId = request.headers['mcp-session-id'] as string | undefined;
+    let transport = sessionId
+      ? transports.get(sessionId) as StreamableHTTPServerTransport | undefined
+      : undefined;
+
+    if (transport) {
+      // Existing session — reuse transport
+    } else if (!sessionId && isInitializeRequest(request.body)) {
+      // New session — create transport
+      const newSessionId = randomUUID();
+      transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: () => newSessionId,
+        onsessioninitialized: (id) => {
+          if (transport && id === newSessionId) {
+            transports.set(id, transport);
+          }
+        },
+      });
+      transport.onclose = () => {
+        if (transport?.sessionId) {
+          transports.delete(transport.sessionId);
+        }
+      };
+      await createMcpServer(host).connect(transport);
+    } else {
+      reply.code(400).send({
+        jsonrpc: '2.0',
+        error: { code: -32000, message: 'Bad Request: No valid session or initialize request' },
+        id: null,
+      });
       return;
     }
-    await transport.handleRequest({}, request.raw, reply.raw);
+
+    try {
+      await transport.handleRequest(request.raw, reply.raw, request.body);
+    } catch (error) {
+      if (!reply.sent) {
+        reply.code(500).send({ error: 'MCP request processing error' });
+      }
+    }
   });
 
-  // DELETE to close session
-  app.delete('/mcp', async (request, reply) => {
-    const sessionId = request.headers['mcp-session-id'] as string;
-    const transport = sessionId ? transports.get(sessionId) : undefined;
-    if (transport) {
-      await transport.close();
-      transports.delete(sessionId);
+  // MCP GET — SSE stream
+  app.get('/mcp', async (request, reply) => {
+    const sessionId = request.headers['mcp-session-id'] as string | undefined;
+    const transport = sessionId
+      ? transports.get(sessionId) as StreamableHTTPServerTransport | undefined
+      : undefined;
+
+    if (!transport) {
+      reply.code(400).send({ error: 'No active session' });
+      return;
     }
-    reply.code(200).send({ status: 'closed' });
+
+    reply.raw.setHeader('Content-Type', 'text/event-stream');
+    reply.raw.setHeader('Cache-Control', 'no-cache');
+    reply.raw.setHeader('Connection', 'keep-alive');
+    reply.raw.flushHeaders();
+
+    try {
+      await transport.handleRequest(request.raw, reply.raw);
+      if (!reply.sent) {
+        reply.hijack();
+      }
+    } catch {
+      if (!reply.raw.writableEnded) {
+        reply.raw.end();
+      }
+    }
+  });
+
+  // MCP DELETE
+  app.delete('/mcp', async (request, reply) => {
+    const sessionId = request.headers['mcp-session-id'] as string | undefined;
+    const transport = sessionId
+      ? transports.get(sessionId) as StreamableHTTPServerTransport | undefined
+      : undefined;
+
+    if (!transport) {
+      reply.code(400).send({ error: 'Invalid session' });
+      return;
+    }
+
+    try {
+      await transport.handleRequest(request.raw, reply.raw);
+      if (!reply.sent) {
+        reply.code(204).send();
+      }
+    } catch {
+      if (!reply.sent) {
+        reply.code(500).send({ error: 'Session deletion error' });
+      }
+    }
   });
 
   // ---- Start ----
