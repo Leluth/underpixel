@@ -1,54 +1,49 @@
 const statusEl = document.getElementById('status')!;
 const serverInfoEl = document.getElementById('server-info')!;
+const captureSection = document.getElementById('capture-section')!;
 const captureBtn = document.getElementById('capture-btn')! as HTMLButtonElement;
 const captureStats = document.getElementById('capture-stats')!;
-const mcpConfig = document.getElementById('mcp-config')!;
+const setupSection = document.getElementById('setup-section')!;
+const dataSection = document.getElementById('data-section')!;
 const mcpCmd = document.getElementById('mcp-cmd')!;
 const mcpJson = document.getElementById('mcp-json')!;
 
 let capturing = false;
 
-// Read connection state
 async function updateState() {
   const state = await chrome.storage.local.get([
     'connected',
     'serverPort',
     'captureActive',
-    'activeSessionId',
   ]);
 
   if (state.connected && state.serverPort) {
     statusEl.textContent = 'Connected';
     statusEl.className = 'status connected';
-    serverInfoEl.textContent = `Bridge on port ${state.serverPort}`;
-    captureBtn.disabled = false;
+    serverInfoEl.textContent = `Bridge running on port ${state.serverPort}`;
 
-    // Show MCP config
-    mcpConfig.classList.remove('hidden');
+    // Show connected sections
+    captureSection.classList.remove('hidden');
+    setupSection.classList.remove('hidden');
+    dataSection.classList.remove('hidden');
+
     const url = `http://127.0.0.1:${state.serverPort}/mcp`;
-
-    // Claude Code CLI command (easiest for Claude Code users)
     mcpCmd.textContent = `claude mcp add underpixel --scope user --transport http ${url}`;
-
-    // JSON config for other MCP clients
-    mcpJson.textContent = JSON.stringify(
-      {
-        mcpServers: {
-          underpixel: {
-            type: 'streamableHttp',
-            url,
-          },
-        },
+    mcpJson.textContent = JSON.stringify({
+      mcpServers: {
+        underpixel: { type: 'streamableHttp', url },
       },
-      null,
-      2,
-    );
+    }, null, 2);
   } else {
     statusEl.textContent = 'Disconnected';
     statusEl.className = 'status disconnected';
-    serverInfoEl.textContent = 'Bridge not connected. Install: npm i -g underpixel-bridge';
-    captureBtn.disabled = true;
-    mcpConfig.classList.add('hidden');
+    serverInfoEl.innerHTML =
+      'Bridge not connected.<br>' +
+      '<span style="color:#a0aec0">Run: <b>npm install -g underpixel-bridge</b></span>';
+
+    captureSection.classList.add('hidden');
+    setupSection.classList.add('hidden');
+    dataSection.classList.add('hidden');
   }
 
   if (state.captureActive) {
@@ -64,28 +59,18 @@ async function updateState() {
   }
 }
 
+// Capture toggle
 captureBtn.addEventListener('click', async () => {
   captureBtn.disabled = true;
-
   try {
-    if (capturing) {
-      // Send stop to background
-      await chrome.runtime.sendMessage({
-        type: 'underpixel-popup-action',
-        action: 'stop-capture',
-      });
-    } else {
-      await chrome.runtime.sendMessage({
-        type: 'underpixel-popup-action',
-        action: 'start-capture',
-      });
-    }
+    await chrome.runtime.sendMessage({
+      type: 'underpixel-popup-action',
+      action: capturing ? 'stop-capture' : 'start-capture',
+    });
   } catch (err) {
     console.error('Popup action failed:', err);
   }
-
-  // Refresh state after a brief delay
-  setTimeout(updateState, 500);
+  setTimeout(() => { captureBtn.disabled = false; updateState(); }, 500);
 });
 
 // Copy buttons
@@ -105,37 +90,30 @@ document.getElementById('copy-json-btn')!.addEventListener('click', (e) => {
   copyToClipboard(mcpJson.textContent || '', e.target as HTMLButtonElement);
 });
 
-// Clear all data button
+// Clear all data
 const clearBtn = document.getElementById('clear-btn')! as HTMLButtonElement;
 clearBtn.addEventListener('click', async () => {
   if (!confirm('Delete all captured sessions and data? This cannot be undone.')) return;
-
   clearBtn.disabled = true;
   clearBtn.textContent = 'Clearing...';
-
   try {
     await chrome.runtime.sendMessage({
       type: 'underpixel-popup-action',
       action: 'clear-all-data',
     });
     clearBtn.textContent = 'Cleared!';
-    setTimeout(() => {
-      clearBtn.textContent = 'Clear All Data';
-      clearBtn.disabled = false;
-    }, 1500);
-  } catch (err) {
-    console.error('Clear failed:', err);
+    setTimeout(() => { clearBtn.textContent = 'Clear All Data'; clearBtn.disabled = false; }, 1500);
+  } catch {
     clearBtn.textContent = 'Clear All Data';
     clearBtn.disabled = false;
   }
 });
 
-// Listen for storage changes
+// Watch for changes
 chrome.storage.onChanged.addListener((changes) => {
   if (changes.connected || changes.serverPort || changes.captureActive) {
     updateState();
   }
 });
 
-// Initial state
 updateState();

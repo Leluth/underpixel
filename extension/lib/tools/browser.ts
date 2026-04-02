@@ -6,11 +6,12 @@ import { resolveTabId, getActiveTabId } from './tab-utils';
 
 toolRegistry.register(TOOL_NAMES.NAVIGATE, async (args) => {
   const url = args.url as string;
-  const newTab = (args.newTab as boolean) ?? false;
+  const newTab = args.newTab as boolean | undefined;
   let tabId = resolveTabId(args.tabId);
 
-  if (newTab) {
-    const tab = await chrome.tabs.create({ url });
+  // Default to new tab unless a specific tabId was given or newTab is explicitly false
+  if (newTab === true || (!tabId && newTab !== false)) {
+    const tab = await chrome.tabs.create({ url, active: true });
     return {
       summary: `Opened ${url} in new tab`,
       tabId: tab.id,

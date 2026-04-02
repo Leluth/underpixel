@@ -17,8 +17,9 @@
         <p id="server-info">Bridge not connected</p>
       </section>
 
-      <section id="capture-section">
-        <button id="capture-btn" class="btn" disabled>Start Capture</button>
+      <!-- Shown when connected -->
+      <section id="capture-section" class="hidden">
+        <button id="capture-btn" class="btn">Start Capture</button>
         <div id="capture-stats" class="stats hidden">
           <div>API calls: <span id="stat-requests">0</span></div>
           <div>Screenshots: <span id="stat-screenshots">0</span></div>
@@ -26,19 +27,32 @@
         </div>
       </section>
 
-      <section id="mcp-config" class="hidden">
-        <h3>Add to Claude Code (one-time)</h3>
-        <div class="copy-block">
-          <code id="mcp-cmd"></code>
-          <button id="copy-cmd-btn" class="btn-copy" title="Copy">Copy</button>
-        </div>
+      <!-- Setup instructions, shown when connected -->
+      <section id="setup-section" class="hidden">
+        <div class="setup-card">
+          <h3>Connect to your AI assistant</h3>
 
-        <h3>Other MCP Clients</h3>
-        <pre id="mcp-json"></pre>
-        <button id="copy-json-btn" class="btn-copy" title="Copy JSON">Copy</button>
+          <details class="client-section" open>
+            <summary>Claude Code</summary>
+            <p class="setup-hint">Run this once in your terminal, then restart Claude Code:</p>
+            <div class="code-block">
+              <code id="mcp-cmd"></code>
+              <button id="copy-cmd-btn" class="btn-copy">Copy</button>
+            </div>
+          </details>
+
+          <details class="client-section">
+            <summary>Other MCP clients (Cursor, Windsurf, etc.)</summary>
+            <p class="setup-hint">Add to your MCP client config:</p>
+            <div class="code-block">
+              <pre id="mcp-json"></pre>
+              <button id="copy-json-btn" class="btn-copy">Copy</button>
+            </div>
+          </details>
+        </div>
       </section>
 
-      <section id="data-section">
+      <section id="data-section" class="hidden">
         <button id="clear-btn" class="btn btn-danger">Clear All Data</button>
       </section>
     </div>

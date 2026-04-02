@@ -1,5 +1,15 @@
 import Fastify, { FastifyRequest, FastifyReply } from 'fastify';
 import cors from '@fastify/cors';
+import { appendFileSync } from 'node:fs';
+
+const DEBUG = process.env.UNDERPIXEL_DEBUG === '1';
+const LOG_FILE = (process.env.LOCALAPPDATA || '/tmp') + '/underpixel-bridge.log';
+
+function log(msg: string) {
+  const line = `[${new Date().toISOString()}] ${msg}\n`;
+  console.error(line.trim());
+  if (DEBUG) { try { appendFileSync(LOG_FILE, line); } catch {} }
+}
 import { Server as McpServerBase } from '@modelcontextprotocol/sdk/server/index.js';
 import {
   ListToolsRequestSchema,
@@ -56,6 +66,7 @@ export async function createServer(host: NativeMessagingHost, port: number) {
     methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
   });
 
+  // Per-session MCP server instances (SDK requires one Protocol per transport)
   const transports = new Map<string, StreamableHTTPServerTransport>();
 
   // ---- Routes ----
@@ -66,6 +77,8 @@ export async function createServer(host: NativeMessagingHost, port: number) {
 
   // MCP POST — following mcp-chrome's exact pattern
   app.post('/mcp', async (request, reply) => {
+    const method = (request.body as any)?.method;
+    log(`[MCP] POST session=${request.headers['mcp-session-id'] || '(none)'} method=${method}`);
     const sessionId = request.headers['mcp-session-id'] as string | undefined;
     let transport = sessionId
       ? transports.get(sessionId) as StreamableHTTPServerTransport | undefined
@@ -89,6 +102,7 @@ export async function createServer(host: NativeMessagingHost, port: number) {
           transports.delete(transport.sessionId);
         }
       };
+      // Fresh server per session — SDK requires separate Protocol per transport
       await createMcpServer(host).connect(transport);
     } else {
       reply.code(400).send({
@@ -102,6 +116,7 @@ export async function createServer(host: NativeMessagingHost, port: number) {
     try {
       await transport.handleRequest(request.raw, reply.raw, request.body);
     } catch (error) {
+      log(`[MCP] POST error: ${error}`);
       if (!reply.sent) {
         reply.code(500).send({ error: 'MCP request processing error' });
       }
@@ -163,7 +178,7 @@ export async function createServer(host: NativeMessagingHost, port: number) {
 
   // ---- Start ----
   await app.listen({ port, host: '127.0.0.1' });
-  console.error(`UnderPixel MCP server listening on http://127.0.0.1:${port}/mcp`);
+  log(`UnderPixel MCP server listening on http://127.0.0.1:${port}/mcp`);
 
   return app;
 }
