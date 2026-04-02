@@ -1,6 +1,10 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import {
+  ListToolsRequestSchema,
+  CallToolRequestSchema,
+} from '@modelcontextprotocol/sdk/types.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { TOOL_SCHEMAS } from 'underpixel-shared';
 import { NativeMessagingHost } from './native-host.js';
@@ -9,39 +13,42 @@ export async function createServer(host: NativeMessagingHost, port: number) {
   const app = Fastify({ logger: false });
   await app.register(cors, { origin: true });
 
-  // ---- MCP Server ----
-  const mcpServer = new McpServer(
+  // ---- MCP Server (low-level, supports raw JSON Schema) ----
+  const mcpServer = new Server(
     { name: 'underpixel', version: '0.1.0' },
     { capabilities: { tools: {} } },
   );
 
-  // Register all tools as proxies to the extension
-  for (const schema of TOOL_SCHEMAS) {
-    mcpServer.tool(
-      schema.name,
-      schema.description,
-      schema.inputSchema.properties,
-      async (params: Record<string, unknown>) => {
-        try {
-          const result = await host.callTool(schema.name, params);
-          return {
-            content: [
-              {
-                type: 'text' as const,
-                text: typeof result === 'string' ? result : JSON.stringify(result, null, 2),
-              },
-            ],
-          };
-        } catch (error: unknown) {
-          const msg = error instanceof Error ? error.message : String(error);
-          return {
-            content: [{ type: 'text' as const, text: `Error: ${msg}` }],
-            isError: true,
-          };
-        }
-      },
-    );
-  }
+  // List tools — return raw JSON schemas directly
+  mcpServer.setRequestHandler(ListToolsRequestSchema, async () => ({
+    tools: TOOL_SCHEMAS.map((s) => ({
+      name: s.name,
+      description: s.description,
+      inputSchema: s.inputSchema,
+    })),
+  }));
+
+  // Call tool — proxy to extension via native messaging
+  mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
+    const { name, arguments: args } = request.params;
+    try {
+      const result = await host.callTool(name, args || {});
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: typeof result === 'string' ? result : JSON.stringify(result, null, 2),
+          },
+        ],
+      };
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      return {
+        content: [{ type: 'text' as const, text: `Error: ${msg}` }],
+        isError: true,
+      };
+    }
+  });
 
   // Transport map for session management
   const transports = new Map<string, StreamableHTTPServerTransport>();

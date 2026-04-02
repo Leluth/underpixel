@@ -89,6 +89,11 @@ function writeWindowsRegistry(manifestPath: string, browser: string): void {
 export async function register(options: RegisterOptions = {}): Promise<void> {
   console.log('UnderPixel Bridge — Native Messaging Host Registration\n');
 
+  // Save the current Node.js path so the wrapper script can find it
+  const nodePathFile = resolve(__dirname, '..', 'node_path.txt');
+  writeFileSync(nodePathFile, process.execPath, 'utf-8');
+  console.log(`Node path saved: ${process.execPath}`);
+
   const hostPath = getHostPath();
   const manifest = createManifest(hostPath);
   const manifestJson = JSON.stringify(manifest, null, 2);
