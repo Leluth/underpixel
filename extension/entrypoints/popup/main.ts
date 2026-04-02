@@ -3,6 +3,7 @@ const serverInfoEl = document.getElementById('server-info')!;
 const captureBtn = document.getElementById('capture-btn')! as HTMLButtonElement;
 const captureStats = document.getElementById('capture-stats')!;
 const mcpConfig = document.getElementById('mcp-config')!;
+const mcpCmd = document.getElementById('mcp-cmd')!;
 const mcpJson = document.getElementById('mcp-json')!;
 
 let capturing = false;
@@ -24,12 +25,18 @@ async function updateState() {
 
     // Show MCP config
     mcpConfig.classList.remove('hidden');
+    const url = `http://127.0.0.1:${state.serverPort}/mcp`;
+
+    // Claude Code CLI command (easiest for Claude Code users)
+    mcpCmd.textContent = `claude mcp add underpixel --scope user --transport http ${url}`;
+
+    // JSON config for other MCP clients
     mcpJson.textContent = JSON.stringify(
       {
         mcpServers: {
           underpixel: {
             type: 'streamableHttp',
-            url: `http://127.0.0.1:${state.serverPort}/mcp`,
+            url,
           },
         },
       },
@@ -79,6 +86,23 @@ captureBtn.addEventListener('click', async () => {
 
   // Refresh state after a brief delay
   setTimeout(updateState, 500);
+});
+
+// Copy buttons
+function copyToClipboard(text: string, btn: HTMLButtonElement) {
+  navigator.clipboard.writeText(text).then(() => {
+    const original = btn.textContent;
+    btn.textContent = 'Copied!';
+    setTimeout(() => { btn.textContent = original; }, 1500);
+  });
+}
+
+document.getElementById('copy-cmd-btn')!.addEventListener('click', (e) => {
+  copyToClipboard(mcpCmd.textContent || '', e.target as HTMLButtonElement);
+});
+
+document.getElementById('copy-json-btn')!.addEventListener('click', (e) => {
+  copyToClipboard(mcpJson.textContent || '', e.target as HTMLButtonElement);
 });
 
 // Clear all data button

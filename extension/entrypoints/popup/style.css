@@ -124,6 +124,39 @@ h3 {
   color: #555;
 }
 
+.copy-block {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.copy-block code {
+  flex: 1;
+  background: #1a202c;
+  color: #68d391;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 10.5px;
+  word-break: break-all;
+  font-family: 'Consolas', 'Monaco', monospace;
+}
+
+.btn-copy {
+  padding: 4px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #fff;
+  color: #555;
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn-copy:hover {
+  background: #f0f0f0;
+}
+
 pre {
   background: #1a202c;
   color: #e2e8f0;
@@ -133,4 +166,5 @@ pre {
   overflow-x: auto;
   white-space: pre-wrap;
   word-break: break-all;
+  margin-bottom: 6px;
 }
