@@ -28,7 +28,11 @@ toolRegistry.register(TOOL_NAMES.CORRELATE, async (args) => {
 
   const queryLower = query.toLowerCase();
 
-  // Search API response bodies for the query text
+  // Search API URLs and response bodies for the query.
+  // Split query into words — match if ALL words appear across URL + body combined.
+  // This handles queries like "pokemon list" matching URL "/pokemon" + body content.
+  const queryWords = queryLower.split(/\s+/).filter((w) => w.length > 0);
+
   const matchingApis = [];
   for (const r of requests) {
     if (r.status !== 'complete') continue;
@@ -39,10 +43,11 @@ toolRegistry.register(TOOL_NAMES.CORRELATE, async (args) => {
       body = bodyRecord?.body || '';
     }
 
-    const urlMatch = r.url.toLowerCase().includes(queryLower);
-    const bodyMatch = body.toLowerCase().includes(queryLower);
+    const searchText = (r.url + ' ' + body).toLowerCase();
+    const allWordsMatch = queryWords.every((w) => searchText.includes(w));
 
-    if (urlMatch || bodyMatch) {
+    if (allWordsMatch) {
+      const urlMatch = queryWords.some((w) => r.url.toLowerCase().includes(w));
       matchingApis.push({
         requestId: r.requestId,
         method: r.method,
@@ -135,15 +140,16 @@ toolRegistry.register(TOOL_NAMES.SNAPSHOT_AT, async (args) => {
 
   const database = await db();
 
-  // Find closest screenshot
-  const screenshots = await database.getAllFromIndex(
-    'screenshots',
-    'by-session',
-    sessionId,
-  );
+  // Find closest screenshot — check both session screenshots and on-demand (sessionId: '')
+  const [sessionScreenshots, onDemandScreenshots] = await Promise.all([
+    database.getAllFromIndex('screenshots', 'by-session', sessionId),
+    database.getAllFromIndex('screenshots', 'by-session', ''),
+  ]);
+  const allScreenshots = [...sessionScreenshots, ...onDemandScreenshots];
+
   let closestScreenshot = null;
   let minDist = Infinity;
-  for (const s of screenshots) {
+  for (const s of allScreenshots) {
     const dist = Math.abs(s.timestamp - timestamp);
     if (dist < minDist) {
       minDist = dist;
@@ -285,16 +291,31 @@ function extractTrackableValues(body: string): Map<string, string> {
     const parsed = JSON.parse(body);
     walkJson(parsed, (key, value) => {
       if (typeof value === 'string') {
+        // JWTs (base64url-encoded JSON, always start with eyJ)
         if (value.startsWith('eyJ') && value.length > 30) {
           values.set(value, 'jwt');
-        } else if (
+        }
+        // UUIDs
+        else if (
           /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
         ) {
           values.set(value, 'uuid');
-        } else if (value.length >= 20 && /^[A-Za-z0-9+/=_-]+$/.test(value)) {
+        }
+        // Hex hashes (SHA-1, SHA-256, etc.)
+        else if (/^[0-9a-f]{32,}$/i.test(value)) {
+          values.set(value, 'token');
+        }
+        // High-entropy tokens: 32+ chars, no spaces/dashes/dots, mixed with digits
+        // Excludes readable slugs like "firecrawl-claude-plugin"
+        else if (
+          value.length >= 32 &&
+          /^[A-Za-z0-9+/=_]+$/.test(value) && // no dashes (excludes slugs)
+          /\d/.test(value) // must contain at least one digit (excludes plain words)
+        ) {
           values.set(value, 'token');
         }
       }
+      // Numeric IDs from keys ending in "id" (e.g., userId, projectId)
       if (typeof value === 'number' && typeof key === 'string' && /id$/i.test(key)) {
         values.set(String(value), 'id');
       }

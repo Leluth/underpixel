@@ -24,6 +24,13 @@ toolRegistry.register(TOOL_NAMES.CAPTURE_START, async (args) => {
 
   const tab = await chrome.tabs.get(tabId);
 
+  // chrome:// and edge:// URLs can't be captured
+  if (tab.url && /^(chrome|edge|about|devtools):/.test(tab.url)) {
+    throw new Error(
+      `Cannot capture on ${tab.url} — navigate to a regular webpage first`,
+    );
+  }
+
   // Build config
   const config: CaptureConfig = {
     ...DEFAULT_CAPTURE_CONFIG,

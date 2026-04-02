@@ -42,8 +42,12 @@ export default defineContentScript({
               },
               maskAllInputs: data.config?.maskInputs ?? false,
               maskTextSelector: data.config?.maskTextSelector,
-              blockSelector: '.underpixel-block',
+              blockClass: 'underpixel-block',
               slimDOMOptions: 'all',
+              errorHandler: (e) => {
+                // Suppress rrweb internal errors (e.g., matches() on non-Element nodes)
+                // to prevent console noise on complex pages
+              },
               recordAfter: 'DOMContentLoaded',
             }) || null;
 
