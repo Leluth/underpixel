@@ -1,16 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { findActiveGroup, findCallsAtTime } from './replay-store';
-import type { CorrelationBundle, NetworkRequest } from 'underpixel-shared';
-
-const bundle = (id: string, timestamp: number, apiCalls: string[]): CorrelationBundle => ({
-  id,
-  sessionId: 's1',
-  timestamp,
-  trigger: 'fetch response: GET /api/test',
-  apiCalls,
-  rrwebEventIds: [],
-  correlation: 'test',
-});
+import { findCallsAtTime, findActiveEvent } from './replay-store';
+import type { NetworkRequest } from 'underpixel-shared';
+import type { EventSection } from '../lib/event-sections';
 
 const request = (id: string, start: number, end: number): NetworkRequest => ({
   requestId: id,
@@ -22,27 +13,6 @@ const request = (id: string, start: number, end: number): NetworkRequest => ({
   type: 'XHR',
   startTime: start,
   endTime: end,
-});
-
-describe('findActiveGroup', () => {
-  const bundles = [
-    bundle('b1', 1000, ['r1']),
-    bundle('b2', 3000, ['r2', 'r3']),
-    bundle('b3', 6000, ['r4']),
-  ];
-
-  it('returns the group containing the current time', () => {
-    expect(findActiveGroup(bundles, 3200)).toBe(bundles[1]);
-  });
-  it('returns the nearest preceding group', () => {
-    expect(findActiveGroup(bundles, 4500)).toBe(bundles[1]);
-  });
-  it('returns null before any groups', () => {
-    expect(findActiveGroup(bundles, 500)).toBeNull();
-  });
-  it('returns last group after all groups', () => {
-    expect(findActiveGroup(bundles, 9000)).toBe(bundles[2]);
-  });
 });
 
 describe('findCallsAtTime', () => {
@@ -58,5 +28,35 @@ describe('findCallsAtTime', () => {
   });
   it('returns empty array if no calls overlap', () => {
     expect(findCallsAtTime(requests, 2000)).toEqual([]);
+  });
+});
+
+const eventSection = (id: string, timestamp: number): EventSection => ({
+  id,
+  timestamp,
+  type: 'click',
+  label: 'CLICK',
+  target: null,
+  bundles: [],
+  correlatedRequests: [],
+  backgroundRequests: [],
+  domSummary: { addedNodes: 0, removedNodes: 0, textChanges: 0, attributeChanges: 0 },
+});
+
+describe('findActiveEvent', () => {
+  const sections = [
+    eventSection('e1', 1000),
+    eventSection('e2', 3000),
+    eventSection('e3', 6000),
+  ];
+
+  it('returns the section containing the current time', () => {
+    expect(findActiveEvent(sections, 3200)).toBe(sections[1]);
+  });
+  it('returns null before any sections', () => {
+    expect(findActiveEvent(sections, 500)).toBeNull();
+  });
+  it('returns last section after all sections', () => {
+    expect(findActiveEvent(sections, 9000)).toBe(sections[2]);
   });
 });

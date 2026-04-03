@@ -4,7 +4,6 @@
   import 'rrweb-player/dist/style.css';
   import type { eventWithTime } from '@rrweb/types';
   import {
-    replayStore,
     setCurrentTime,
     setPlaying,
   } from '../stores/replay-store';
@@ -13,9 +12,7 @@
 
   let container: HTMLDivElement;
   let player: rrwebPlayer | null = null;
-  let unsubscribe: (() => void) | null = null;
   let resizeObserver: ResizeObserver | null = null;
-  let lastSelectedCallId: string | null = null;
   let seekTimer: ReturnType<typeof setTimeout> | null = null;
   let desiredPlaying = false;
   let healthy = true;
@@ -37,20 +34,6 @@
     });
     resizeObserver.observe(container);
 
-    unsubscribe = replayStore.subscribe((state) => {
-      if (
-        state.selectedCallId &&
-        state.selectedCallId !== lastSelectedCallId
-      ) {
-        const call = state.allRequests.find(
-          (r) => r.requestId === state.selectedCallId,
-        );
-        if (call && state.session) {
-          seekTo(call.startTime - state.session.startTime);
-        }
-      }
-      lastSelectedCallId = state.selectedCallId;
-    });
   });
 
   function destroyPlayer() {
@@ -124,7 +107,6 @@
   }
 
   onDestroy(() => {
-    unsubscribe?.();
     resizeObserver?.disconnect();
     if (seekTimer) clearTimeout(seekTimer);
     destroyPlayer();

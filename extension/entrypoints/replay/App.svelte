@@ -14,6 +14,7 @@
     getNetworkRequests,
     getCorrelationBundles,
   } from '../../src/replay/lib/db-queries';
+  import { buildEventSections } from '../../src/replay/lib/event-sections';
 
   import SessionPicker from '../../src/replay/components/SessionPicker.svelte';
   import Player from '../../src/replay/components/Player.svelte';
@@ -46,7 +47,10 @@
       console.log(`[UnderPixel Replay] Session ${sessionId}: ${requests.length} requests, ${bundles.length} bundles, ${storedEvents.length} rrweb events`);
       console.log(`[UnderPixel Replay] Session stats:`, session.stats);
 
-      loadSessionData(session, requests, bundles);
+      const eventSections = buildEventSections(storedEvents, bundles, requests);
+      console.log(`[UnderPixel Replay] Built ${eventSections.length} event sections`);
+
+      loadSessionData(session, requests, bundles, eventSections);
 
       rrwebEvents = storedEvents.map((e) => ({
         type: e.type,
@@ -140,11 +144,15 @@
             onToggle={() => playerComponent?.toggle()}
             onSeek={(t) => playerComponent?.goto(t)}
             onSpeedChange={(s) => playerComponent?.setSpeed(s)}
+            onEventSelect={(id, ts) => {
+              const offset = ts - ($replayStore.session?.startTime ?? 0) - 200;
+              playerComponent?.goto(Math.max(0, offset));
+            }}
           />
         </div>
 
         <div class="timeline-pane">
-          <Timeline />
+          <Timeline onSeek={(t) => playerComponent?.goto(t)} />
         </div>
       </main>
     {:else}

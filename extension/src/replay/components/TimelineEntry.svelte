@@ -1,13 +1,12 @@
 <script lang="ts">
   import type { NetworkRequest } from 'underpixel-shared';
-  import { replayStore, selectCall, openDetail } from '../stores/replay-store';
+  import { replayStore, openDetail } from '../stores/replay-store';
   import { formatDuration, shortenUrl } from '../lib/format';
   import { statusColor, methodColor } from '../lib/theme';
 
   export let request: NetworkRequest;
   export let muted: boolean = false;
 
-  $: isSelected = $replayStore.selectedCallId === request.requestId;
   $: isInProgress =
     !muted &&
     $replayStore.session &&
@@ -21,11 +20,6 @@
     : 0;
 
   function handleClick() {
-    selectCall(request.requestId);
-  }
-
-  function handleDetailClick(e: MouseEvent) {
-    e.stopPropagation();
     openDetail(request.requestId);
   }
 </script>
@@ -33,7 +27,6 @@
 <!-- svelte-ignore a11y-click-events-have-key-events -->
 <div
   class="entry"
-  class:selected={isSelected}
   class:in-progress={isInProgress}
   class:muted
   on:click={handleClick}
@@ -52,9 +45,6 @@
       <span class="status" style="color: {statusColor(request.statusCode)}">
         {request.statusCode ?? '...'}
       </span>
-      <button class="detail-btn" on:click={handleDetailClick} title="View details">
-        ⓘ
-      </button>
     </div>
   </div>
   <div class="entry-timing">
@@ -82,8 +72,7 @@
     transition: background 0.1s, border-color 0.15s;
   }
 
-  .entry:hover,
-  .entry.selected {
+  .entry:hover {
     background: var(--surface-active);
   }
 
@@ -140,24 +129,6 @@
   .status {
     font-family: var(--font-body);
     font-size: 14px;
-  }
-
-  .detail-btn {
-    font-family: var(--font-body);
-    font-size: 14px;
-    color: var(--text-dim);
-    background: var(--deep-bg);
-    border: 2px solid var(--border);
-    border-radius: 3px;
-    padding: 0 6px;
-    line-height: 1.2;
-    transition: all 0.15s;
-  }
-
-  .detail-btn:hover {
-    color: var(--accent);
-    border-color: var(--accent);
-    background: var(--surface-active);
   }
 
   .entry-timing {

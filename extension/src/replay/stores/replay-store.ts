@@ -1,30 +1,31 @@
 import { writable } from 'svelte/store';
 import type { CaptureSession, NetworkRequest, CorrelationBundle } from 'underpixel-shared';
 import { type FilterState, EMPTY_FILTERS } from '../lib/search';
+import type { EventSection } from '../lib/event-sections';
 
 // ---- Pure functions (exported for testing) ----
-
-/** Find the correlation group active at a given time */
-export function findActiveGroup(
-  bundles: CorrelationBundle[],
-  currentTime: number,
-): CorrelationBundle | null {
-  let active: CorrelationBundle | null = null;
-  for (const b of bundles) {
-    if (b.timestamp <= currentTime) {
-      active = b;
-    } else {
-      break;
-    }
-  }
-  return active;
-}
 
 /** Find requests whose time range overlaps currentTime */
 export function findCallsAtTime(requests: NetworkRequest[], currentTime: number): NetworkRequest[] {
   return requests.filter(
     (r) => r.startTime <= currentTime && (r.endTime ?? r.startTime) >= currentTime,
   );
+}
+
+/** Find the event section active at a given absolute time */
+export function findActiveEvent(
+  sections: EventSection[],
+  currentTime: number,
+): EventSection | null {
+  let active: EventSection | null = null;
+  for (const s of sections) {
+    if (s.timestamp <= currentTime) {
+      active = s;
+    } else {
+      break;
+    }
+  }
+  return active;
 }
 
 // ---- Store shape ----
@@ -34,7 +35,7 @@ export interface ReplayState {
   session: CaptureSession | null;
   allRequests: NetworkRequest[];
   bundles: CorrelationBundle[];
-  selectedCallId: string | null;
+  eventSections: EventSection[];
   detailCallId: string | null;
   searchQuery: string;
   filters: FilterState;
@@ -46,7 +47,7 @@ const initial: ReplayState = {
   session: null,
   allRequests: [],
   bundles: [],
-  selectedCallId: null,
+  eventSections: [],
   detailCallId: null,
   searchQuery: '',
   filters: EMPTY_FILTERS,
@@ -58,10 +59,6 @@ export const replayStore = writable<ReplayState>(initial);
 // Convenience updaters
 export function setCurrentTime(time: number) {
   replayStore.update((s) => ({ ...s, currentTime: time }));
-}
-
-export function selectCall(requestId: string | null) {
-  replayStore.update((s) => ({ ...s, selectedCallId: requestId }));
 }
 
 export function openDetail(requestId: string | null) {
@@ -88,11 +85,13 @@ export function loadSessionData(
   session: CaptureSession,
   requests: NetworkRequest[],
   bundles: CorrelationBundle[],
+  eventSections: EventSection[],
 ) {
   replayStore.set({
     ...initial,
     session,
     allRequests: requests,
     bundles,
+    eventSections,
   });
 }
