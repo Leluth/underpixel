@@ -3,6 +3,7 @@ const serverInfoEl = document.getElementById('server-info')!;
 const captureSection = document.getElementById('capture-section')!;
 const captureBtn = document.getElementById('capture-btn')! as HTMLButtonElement;
 const captureStats = document.getElementById('capture-stats')!;
+const replayBtn = document.getElementById('replay-btn')! as HTMLButtonElement;
 const setupSection = document.getElementById('setup-section')!;
 const dataSection = document.getElementById('data-section')!;
 const mcpCmd = document.getElementById('mcp-cmd')!;
@@ -57,6 +58,18 @@ async function updateState() {
     captureBtn.classList.remove('capturing');
     captureStats.classList.add('hidden');
   }
+
+  // Show replay button if there are sessions
+  chrome.runtime.sendMessage(
+    { type: 'underpixel-popup-action', action: 'has-sessions' },
+    (response) => {
+      if (response?.hasSessions) {
+        replayBtn.classList.remove('hidden');
+      } else {
+        replayBtn.classList.add('hidden');
+      }
+    },
+  );
 }
 
 // Capture toggle
@@ -95,6 +108,15 @@ document.getElementById('copy-json-btn')!.addEventListener('click', (e) => {
   copyToClipboard(mcpJson.textContent || '', e.target as HTMLButtonElement);
 });
 
+// View Replay
+replayBtn.addEventListener('click', async () => {
+  await chrome.runtime.sendMessage({
+    type: 'underpixel-popup-action',
+    action: 'open-replay',
+  });
+  window.close();
+});
+
 // Clear all data
 const clearBtn = document.getElementById('clear-btn')! as HTMLButtonElement;
 clearBtn.addEventListener('click', async () => {
@@ -107,6 +129,7 @@ clearBtn.addEventListener('click', async () => {
       action: 'clear-all-data',
     });
     clearBtn.textContent = 'Cleared!';
+    replayBtn.classList.add('hidden');
     setTimeout(() => {
       clearBtn.textContent = 'Clear All Data';
       clearBtn.disabled = false;

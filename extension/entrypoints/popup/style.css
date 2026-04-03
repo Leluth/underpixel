@@ -101,6 +101,18 @@ section {
   background: #fff5f5 !important;
 }
 
+.btn-replay {
+  background: #2d1b4e;
+  color: #ff8a80;
+  border: 1px solid #ff8a80;
+  margin-top: 8px;
+  width: 100%;
+}
+
+.btn-replay:hover {
+  background: #3d2b5e;
+}
+
 .btn-copy {
   padding: 4px 10px;
   border: 1px solid #cbd5e0;

@@ -1,9 +1,13 @@
 import { defineConfig } from 'wxt';
+import { svelte } from '@sveltejs/vite-plugin-svelte';
 
 export default defineConfig({
   srcDir: '.',
   outDir: '.output',
   modules: [],
+  vite: () => ({
+    plugins: [svelte()],
+  }),
   manifest: {
     name: 'UnderPixel',
     description: "Record, replay, and understand what's behind the pixels",

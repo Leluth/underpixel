@@ -1,5 +1,28 @@
 # Pending Manual Tests
 
+## Replay UI (Phase 2)
+
+- [x] Replay page loads with Cozy Pixel RPG theme
+- [x] Session picker shows captured sessions
+- [x] rrweb-player renders recorded DOM
+- [x] API timeline shows calls grouped by correlation (or OTHER CALLS)
+- [x] Play/pause button works after clicking API calls or progress bar
+- [x] Capture survives page navigation (rrweb restarts on new page)
+- [x] Detail panel opens via ⓘ button, shows headers/request/response/timing/correlation tabs
+- [x] Binary response bodies show "Binary data (N bytes)" not garbled text
+- [x] NOW badge highlights the group containing the selected API call
+- [x] Active group has gold border
+- [x] Filter chips have clear active/inactive states
+- [x] Clear All Data hides View Replay button
+- [ ] Playback with timeline auto-scroll (only during play, not manual clicks)
+- [ ] Search bar filters API calls by URL/header/body text
+- [ ] Progress bar click seeks to correct position
+- [ ] Speed control (1x/2x/4x) changes playback speed
+- [ ] Session picker switches between sessions
+- [ ] Replay across multi-page navigation sessions (both pages visible in replay)
+- [ ] Copy cURL / Copy JSON in detail panel
+- [ ] ESC closes detail panel
+
 ## dom_text TreeWalker fix
 
 - [ ] Test `underpixel_dom_text` with `body` selector on a JSON API page (e.g. `https://reqres.in/api/users`)

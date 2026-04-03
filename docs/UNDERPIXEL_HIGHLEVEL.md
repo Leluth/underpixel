@@ -535,16 +535,20 @@ interface NetworkCapture {
 
 **Deliverable**: User can tell Claude Code "go to X page, capture network, tell me what API feeds the user list" and get a correlated answer.
 
-### Phase 2: Smart Capture + Replay UI (~3-4 days)
+### Phase 2: Smart Capture + Replay UI — PARTIAL
 
 **Goal**: Visual change detection + replay interface.
 
 1. **2-layer screenshot gate** — rrweb events + PerformanceObserver + stability wait, then pixelmatch for pixel diff confirmation
 2. **Offscreen document** — canvas-based image processing for hash/diff
-3. **Replay page** — `replay.html` with rrweb-player left pane + API timeline right pane
-4. **Timeline sync** — click API call -> seek replay, play replay -> highlight current API calls
-5. **MCP tools** — implement `timeline`, `snapshot_at`, `replay`
-6. **DOM text tool** — `underpixel_dom_text(selector)` for quick text extraction
+3. ✅ **Replay page** — `replay.html` with rrweb-player (Svelte 5) left pane + API timeline right pane, "Cozy Pixel RPG" theme
+4. ✅ **Timeline sync** — click API call -> seek replay, play replay -> highlight current API calls, bidirectional
+5. ✅ **MCP tools** — `timeline`, `snapshot_at`, `replay` (with timestamp param), `dom_text` all implemented in Phase 1
+6. ✅ **Detail panel** — slide-out panel with Headers/Request/Response/Timing/Correlation tabs
+7. ✅ **Search & filter** — full-text search + method/status filter chips
+8. ✅ **Capture survives navigation** — debugger re-attach + rrweb restart via `chrome.tabs.onUpdated`
+
+**Remaining**: Items 1-2 (smart screenshot gate + offscreen document) still pending.
 
 **Deliverable**: User can replay browser sessions with synchronized API timeline. Smart screenshots captured automatically on significant visual changes.
 

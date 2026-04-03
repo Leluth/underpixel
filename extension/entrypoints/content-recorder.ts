@@ -35,6 +35,9 @@ export default defineContentScript({
                   window.location.origin,
                 );
               },
+              // Periodic full snapshots enable reliable seeking in the replayer.
+              // Without this, goto() must rebuild from the very first snapshot.
+              checkoutEveryNms: 5000,
               sampling: data.config?.sampling || {
                 mousemove: 100,
                 scroll: 150,

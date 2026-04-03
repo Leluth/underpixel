@@ -9,8 +9,11 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@sveltejs/vite-plugin-svelte": "^7.0.0",
     "idb": "^8.0.2",
     "rrweb": "2.0.0-alpha.4",
+    "rrweb-player": "1.0.0-alpha.4",
+    "svelte": "^5.55.1",
     "underpixel-shared": "workspace:*"
   },
   "devDependencies": {

@@ -20,6 +20,10 @@ const activeSessions = new Map<number, string>();
 const pendingRequests = new Map<string, NetworkRequest>();
 /** Request count per session */
 const requestCounts = new Map<string, number>();
+/** Cached config per session (avoids IDB read on every request) */
+const sessionConfigs = new Map<string, CaptureConfig>();
+/** Tabs with a pending re-attach listener (prevent stacking) */
+const pendingReattach = new Set<number>();
 
 // Register CDP event listener once
 chrome.debugger.onEvent.addListener(handleDebuggerEvent);
@@ -29,7 +33,7 @@ chrome.debugger.onDetach.addListener(handleDebuggerDetach);
 export async function startCapture(
   tabId: number,
   sessionId: string,
-  _config: CaptureConfig,
+  config: CaptureConfig,
 ): Promise<void> {
   if (activeSessions.has(tabId)) {
     await stopCapture(tabId);
@@ -48,6 +52,7 @@ export async function startCapture(
 
   activeSessions.set(tabId, sessionId);
   requestCounts.set(sessionId, 0);
+  sessionConfigs.set(sessionId, config);
   console.log(`[UnderPixel] Network capture started on tab ${tabId}`);
 }
 
@@ -58,6 +63,7 @@ export async function stopCapture(tabId: number): Promise<void> {
 
   activeSessions.delete(tabId);
   requestCounts.delete(sessionId);
+  sessionConfigs.delete(sessionId);
 
   try {
     await cdpSession.sendCommand(tabId, 'Network.disable');
@@ -69,11 +75,9 @@ export async function stopCapture(tabId: number): Promise<void> {
   console.log(`[UnderPixel] Network capture stopped on tab ${tabId}`);
 }
 
-/** Get the session config for filtering decisions */
-async function getConfig(sessionId: string): Promise<CaptureConfig> {
-  const database = await db();
-  const session = await database.get('sessions', sessionId);
-  return session?.config || (DEFAULT_CAPTURE_CONFIG as CaptureConfig);
+/** Get the session config for filtering decisions (cached in memory) */
+function getConfig(sessionId: string): CaptureConfig {
+  return sessionConfigs.get(sessionId) || (DEFAULT_CAPTURE_CONFIG as CaptureConfig);
 }
 
 function shouldCapture(url: string, resourceType: string, config: CaptureConfig): boolean {
@@ -157,7 +161,7 @@ async function onRequestWillBeSent(
   pendingRequests.set(requestId, nr);
 
   // Now check filter — evict if this request shouldn't be captured
-  const config = await getConfig(sessionId);
+  const config = getConfig(sessionId);
   if (!shouldCapture(url, type, config)) {
     pendingRequests.delete(requestId);
   }
@@ -259,15 +263,58 @@ function onLoadingFailed(sessionId: string, params: Record<string, unknown>) {
 function handleDebuggerDetach(source: chrome.debugger.Debuggee, reason: string) {
   const tabId = source.tabId;
   if (tabId && activeSessions.has(tabId)) {
-    const sessionId = activeSessions.get(tabId);
+    const sessionId = activeSessions.get(tabId)!;
     console.warn(`[UnderPixel] Debugger detached from tab ${tabId}: ${reason}`);
-    activeSessions.delete(tabId);
 
     // Clean up stranded pending requests for this session
     for (const [id, nr] of pendingRequests) {
       if (nr.sessionId === sessionId) {
         pendingRequests.delete(id);
       }
+    }
+
+    // If detached due to navigation ("target_closed"), wait for the tab
+    // to finish loading then re-attach. Uses chrome.tabs.onUpdated with
+    // status:'complete' instead of a fixed setTimeout.
+    if (reason === 'target_closed') {
+      if (pendingReattach.has(tabId)) return;
+      pendingReattach.add(tabId);
+
+      console.log(
+        `[UnderPixel] Navigation detected, waiting for tab ${tabId} to load before re-attaching`,
+      );
+
+      const onUpdated = async (updatedTabId: number, changeInfo: chrome.tabs.TabChangeInfo) => {
+        if (updatedTabId !== tabId || changeInfo.status !== 'complete') return;
+        chrome.tabs.onUpdated.removeListener(onUpdated);
+        pendingReattach.delete(tabId);
+
+        try {
+          const tab = await chrome.tabs.get(tabId).catch(() => null);
+          if (!tab) {
+            activeSessions.delete(tabId);
+            return;
+          }
+          await cdpSession.attach(tabId, CDP_OWNER);
+          await cdpSession.sendCommand(tabId, 'Network.enable', {
+            maxPostDataSize: 65536,
+          });
+          console.log(`[UnderPixel] Re-attached debugger after navigation on tab ${tabId}`);
+        } catch (err) {
+          console.error(`[UnderPixel] Failed to re-attach after navigation:`, err);
+          activeSessions.delete(tabId);
+        }
+      };
+
+      chrome.tabs.onUpdated.addListener(onUpdated);
+
+      setTimeout(() => {
+        chrome.tabs.onUpdated.removeListener(onUpdated);
+        pendingReattach.delete(tabId);
+      }, 30000);
+    } else {
+      // Genuine detach (user cancelled, DevTools conflict, etc.)
+      activeSessions.delete(tabId);
     }
   }
 }

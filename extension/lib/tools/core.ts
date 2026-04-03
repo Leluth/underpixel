@@ -324,17 +324,23 @@ toolRegistry.register(TOOL_NAMES.SNAPSHOT_AT, async (args) => {
   };
 });
 
-// ---- replay (stub — opens extension page) ----
+// ---- replay (opens replay UI in extension tab) ----
 
 toolRegistry.register(TOOL_NAMES.REPLAY, async (args) => {
   let sessionId = args.sessionId as string | undefined;
+  const timestamp = args.timestamp as number | undefined;
+
   if (!sessionId) {
     const session = await getLatestSession();
     if (!session) throw new Error('No capture sessions found');
     sessionId = session.id;
   }
 
-  const replayUrl = chrome.runtime.getURL(`replay.html?sessionId=${sessionId}`);
+  let replayUrl = chrome.runtime.getURL(`replay.html?sessionId=${sessionId}`);
+  if (timestamp !== undefined) {
+    replayUrl += `&t=${timestamp}`;
+  }
+
   const tab = await chrome.tabs.create({ url: replayUrl });
 
   return {

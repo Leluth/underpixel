@@ -1,0 +1,120 @@
+@font-face {
+  font-family: 'Press Start 2P';
+  src: url('/assets/fonts/press-start-2p.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Silkscreen';
+  src: url('/assets/fonts/silkscreen.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'VT323';
+  src: url('/assets/fonts/vt323.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --deep-bg: #0f0c24;
+  --base-bg: #171330;
+  --surface: #221d45;
+  --surface-active: #2a2350;
+  --border: #352e6b;
+
+  --text-primary: #f0ecff;
+  --text-secondary: #e0d8ff;
+  --text-muted: #c0b8e8;
+  --text-dim: #9088c0;
+
+  --accent: #ff8a80;
+  --accent-light: #ffab91;
+
+  --success: #a5d6a7;
+  --warning: #ffcc80;
+  --error: #ef9a9a;
+
+  --font-pixel: 'Press Start 2P', monospace;
+  --font-ui: 'Silkscreen', monospace;
+  --font-body: 'VT323', monospace;
+
+  --border-width: 3px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+  background: var(--base-bg);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 14px;
+  overflow: hidden;
+}
+
+button {
+  cursor: pointer;
+  font-family: var(--font-ui);
+  border: var(--border-width) solid var(--border);
+  background: var(--surface);
+  color: var(--text-secondary);
+  padding: 4px 12px;
+  font-size: 10px;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+
+button:hover {
+  background: var(--surface-active);
+}
+
+input[type='text'],
+input[type='search'] {
+  background: var(--deep-bg);
+  color: var(--text-primary);
+  border: var(--border-width) solid var(--border);
+  padding: 5px 10px;
+  font-family: var(--font-ui);
+  font-size: 10px;
+  outline: none;
+}
+
+input[type='text']:focus,
+input[type='search']:focus {
+  border-color: var(--accent);
+}
+
+.pixel-border {
+  box-shadow:
+    inset -4px -4px 0px 0px rgba(0, 0, 0, 0.3),
+    inset 4px 4px 0px 0px rgba(255, 255, 255, 0.08);
+}
+
+.scanlines::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.03) 2px,
+    rgba(0, 0, 0, 0.03) 4px
+  );
+  pointer-events: none;
+}

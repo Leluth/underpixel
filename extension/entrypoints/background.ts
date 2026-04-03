@@ -39,6 +39,41 @@ export default defineBackground(() => {
     });
   });
 
+  // Re-start rrweb recording after page navigation on a capturing tab.
+  // Uses chrome.tabs.onUpdated with status:'complete' instead of a fixed
+  // setTimeout — fires when the page is actually ready, not after an
+  // arbitrary delay.
+  chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
+    if (changeInfo.status !== 'complete') return;
+
+    const { isCapturing, getSessionId } = await import('../lib/network/capture');
+    if (!isCapturing(tabId)) return;
+
+    const sessionId = getSessionId(tabId);
+    if (!sessionId) return;
+
+    const database = await import('../lib/storage/db').then((m) => m.db());
+    const session = await database.get('sessions', sessionId);
+    if (!session) return;
+
+    console.log(`[UnderPixel] Tab ${tabId} loaded, restarting rrweb recording`);
+
+    try {
+      await chrome.tabs.sendMessage(tabId, {
+        type: 'underpixel-command',
+        action: 'start-recording',
+        config: {
+          sampling: session.config.rrwebSampling,
+          maskInputs: session.config.maskInputs,
+          maskTextSelector: session.config.maskTextSelector,
+        },
+      });
+      console.log(`[UnderPixel] rrweb recording restarted on tab ${tabId}`);
+    } catch (err) {
+      console.warn(`[UnderPixel] Failed to restart rrweb after navigation:`, err);
+    }
+  });
+
   // Handle messages from content scripts and popup
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === 'rrweb' || message.type === 'layout-shift') {
@@ -49,7 +84,7 @@ export default defineBackground(() => {
 
     if (message.type === 'underpixel-popup-action') {
       handlePopupAction(message.action).then(
-        () => sendResponse({ ok: true }),
+        (result) => sendResponse({ ok: true, ...result }),
         (err: Error) => sendResponse({ error: err.message }),
       );
       return true; // async response
@@ -130,7 +165,7 @@ async function recoverCaptureState() {
   }
 }
 
-async function handlePopupAction(action: string) {
+async function handlePopupAction(action: string): Promise<Record<string, unknown>> {
   if (action === 'start-capture') {
     const { toolRegistry } = await import('../lib/tools/registry');
     await toolRegistry.execute('underpixel_capture_start', {});
@@ -140,7 +175,19 @@ async function handlePopupAction(action: string) {
   } else if (action === 'clear-all-data') {
     const { clearAllData } = await import('../lib/storage/db');
     await clearAllData();
+  } else if (action === 'has-sessions') {
+    const { getLatestSession } = await import('../lib/storage/db');
+    const session = await getLatestSession();
+    return { hasSessions: !!session };
+  } else if (action === 'open-replay') {
+    const { getLatestSession } = await import('../lib/storage/db');
+    const session = await getLatestSession();
+    if (session) {
+      const url = chrome.runtime.getURL(`replay.html?sessionId=${session.id}`);
+      await chrome.tabs.create({ url });
+    }
   }
+  return {};
 }
 
 async function handleContentMessage(
