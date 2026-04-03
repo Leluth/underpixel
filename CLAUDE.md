@@ -27,9 +27,10 @@ pnpm format:check     # Prettier check
 
 ## Status
 
-- **Phase 1: COMPLETE** — 13 MCP tools, network capture, rrweb recording, correlation engine, bridge, popup, 86 tests.
-- **Phase 2: PARTIAL** — Replay UI done (Svelte + rrweb-player, Cozy Pixel RPG theme, bidirectional sync, detail panel, search/filter). Smart screenshot gate (pixelmatch) + offscreen document still pending.
+- **Phase 1: COMPLETE** — 13 MCP tools, network capture, rrweb recording, correlation engine, bridge, popup.
+- **Phase 2: PARTIAL** — Replay UI done (Svelte + rrweb-player, Cozy Pixel RPG theme, event-based timeline, detail panel, search/filter). Smart screenshot gate (pixelmatch) + offscreen document still pending.
 - **Phase 3: PARTIAL** — `api_dependencies` tool done. Session export/import not started.
+- **132 tests** across all packages (extension: 101, shared: 19, bridge: 12).
 
 ## Replay UI (Phase 2)
 
@@ -37,10 +38,24 @@ The replay page (`entrypoints/replay/`) uses **Svelte 5** in legacy mode (Svelte
 
 Key patterns:
 
+- **Event-based timeline** — The API panel groups calls by UI events (CLICK, INPUT, SCROLL, PAGE UPDATE), not individual API calls. `buildEventSections()` in `src/replay/lib/event-sections.ts` pre-computes `EventSection[]` once at session load by scanning rrweb events for user interactions and attaching correlation bundles + background requests by temporal proximity (2s window). See the JSDoc on `buildEventSections` for the full algorithm.
 - `src/replay/stores/` — Svelte writable stores. Scrubber uses direct DOM updates via `replayStore.subscribe()` in `onMount` to avoid Svelte re-render on every frame.
+- `src/replay/components/EventGroup.svelte` — Renders one event section: clickable header (seeks player 200ms before event), DOM summary, correlated API calls, collapsed background calls sub-group.
 - `src/replay/components/Player.svelte` — rrweb-player wrapper. Tracks `desiredPlaying` state independently of player's internal state. Recreates player on seek failure (cross-origin DOM corruption). Play/pause and seeking are fully decoupled.
-- `src/replay/lib/` — Pure logic (search, format, group-naming, theme) with tests.
+- `src/replay/lib/` — Pure logic (search, format, event-sections, group-naming, theme) with tests.
 - Capture survives page navigation via `chrome.tabs.onUpdated` (status:'complete') listener that re-attaches debugger and re-sends `start-recording` to fresh content scripts.
+
+### Svelte 4 store caveat
+
+In Svelte 4 legacy mode, `$store.anyProp` subscribes to the **entire** store — not just that property. This means `$replayStore.allRequests` in a `$:` block fires on every `setCurrentTime` tick (60Hz). Avoid reading `$replayStore` inside reactive blocks that don't need `currentTime`. Derive from other reactive variables or pre-computed data (e.g. `eventSections`, `visibleSections`) instead.
+
+### Correlation engine optimizations
+
+- **100ms backward buffer** on the correlation window (`PRE_CORRELATION_BUFFER`) — accounts for CDP event delivery latency where DOM mutations can have timestamps slightly before `apiTime`.
+- **Window caching** — correlation window config read from IDB once per session, not per API call.
+- **Batched stats** — `networkRequestCount` and `correlationBundleCount` tracked in memory, flushed to IDB in a single write on session stop.
+- **Request info pass-through** — `onApiResponse` accepts `{ method, url }` so `buildBundle` doesn't re-read from IDB.
+- **Static imports** in `background.ts` and `capture.ts` for hot-path modules (was dynamic `import()` per event).
 
 ### rrweb guide alignment
 
@@ -60,3 +75,6 @@ Key patterns:
 - `docs/UNDERPIXEL_TECH_DESIGN.md` — Data models, component specs, IDB schema
 - `docs/superpowers/specs/2026-04-02-replay-ui-design.md` — Replay UI design spec (Phase 2)
 - `docs/superpowers/plans/2026-04-02-replay-ui.md` — Replay UI implementation plan (Phase 2)
+- `docs/superpowers/specs/2026-04-02-timeline-panel-redesign.md` — Timeline panel chronological ordering + muted background calls
+- `docs/superpowers/specs/2026-04-03-event-based-timeline-design.md` — Event-based timeline redesign spec
+- `docs/superpowers/plans/2026-04-03-event-based-timeline.md` — Event-based timeline implementation plan

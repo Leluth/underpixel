@@ -46,12 +46,16 @@
   ): EventSection[] {
     if (!searchQuery && Object.values(filters).every((v) => !v)) return sections;
 
-    return sections.filter((s) => {
-      const allRequests = [...s.correlatedRequests, ...s.backgroundRequests];
-      return allRequests.some(
-        (r) => matchesFilters(r, filters) && matchesSearch(r, searchQuery),
-      );
-    });
+    const match = (r: import('underpixel-shared').NetworkRequest) =>
+      matchesFilters(r, filters) && matchesSearch(r, searchQuery);
+
+    return sections
+      .map((s) => ({
+        ...s,
+        correlatedRequests: s.correlatedRequests.filter(match),
+        backgroundRequests: s.backgroundRequests.filter(match),
+      }))
+      .filter((s) => s.correlatedRequests.length > 0 || s.backgroundRequests.length > 0);
   }
 
   function handleSeek(eventTimestamp: number) {

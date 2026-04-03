@@ -40,9 +40,11 @@
     on:click={handleHeaderClick}
     role="button"
     tabindex="0"
+    title="Jump to {timeLabel}"
   >
-    <span class="event-symbol">♥</span>
-    <span class="event-label">{label} ({timeLabel})</span>
+    <span class="event-symbol">▶</span>
+    <span class="event-label">{label}</span>
+    <span class="time-pill">{timeLabel}</span>
     {#if isActive}
       <span class="now-badge">NOW</span>
     {/if}
@@ -117,10 +119,42 @@
 
   .event-header:hover {
     color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 3px;
+  }
+
+  .time-pill {
+    font-family: var(--font-body);
+    font-size: 12px;
+    color: var(--text-muted);
+    background: var(--deep-bg);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 1px 6px;
+    transition: border-color 0.15s, color 0.15s;
+  }
+
+  .event-header:hover .time-pill {
+    border-color: var(--accent);
+    color: var(--accent);
   }
 
   .event-symbol {
     font-size: 10px;
+    color: var(--accent);
+    background: rgba(255, 138, 128, 0.1);
+    border: 1px solid var(--accent);
+    border-radius: 3px;
+    width: 18px;
+    height: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s;
+  }
+
+  .event-header:hover .event-symbol {
+    background: rgba(255, 138, 128, 0.25);
   }
 
   .now-badge {

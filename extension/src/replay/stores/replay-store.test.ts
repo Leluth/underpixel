@@ -44,11 +44,7 @@ const eventSection = (id: string, timestamp: number): EventSection => ({
 });
 
 describe('findActiveEvent', () => {
-  const sections = [
-    eventSection('e1', 1000),
-    eventSection('e2', 3000),
-    eventSection('e3', 6000),
-  ];
+  const sections = [eventSection('e1', 1000), eventSection('e2', 3000), eventSection('e3', 6000)];
 
   it('returns the section containing the current time', () => {
     expect(findActiveEvent(sections, 3200)).toBe(sections[1]);
