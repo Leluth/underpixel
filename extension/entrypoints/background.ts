@@ -1,3 +1,8 @@
+// Static imports for modules used in hot-path listeners (onUpdated, onMessage)
+import { isCapturing, getSessionId } from '../lib/network/capture';
+import { db } from '../lib/storage/db';
+import { enqueueRrwebEvent } from '../lib/recording/event-batcher';
+
 export default defineBackground(() => {
   console.log('[UnderPixel] Background service worker started');
 
@@ -46,13 +51,12 @@ export default defineBackground(() => {
   chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
     if (changeInfo.status !== 'complete') return;
 
-    const { isCapturing, getSessionId } = await import('../lib/network/capture');
     if (!isCapturing(tabId)) return;
 
     const sessionId = getSessionId(tabId);
     if (!sessionId) return;
 
-    const database = await import('../lib/storage/db').then((m) => m.db());
+    const database = await db();
     const session = await database.get('sessions', sessionId);
     if (!session) return;
 
@@ -198,7 +202,6 @@ async function handleContentMessage(
   if (!tabId) return;
 
   // Check if we're capturing this tab
-  const { getSessionId } = await import('../lib/network/capture');
   const sessionId = getSessionId(tabId);
   if (!sessionId) return;
 
@@ -216,7 +219,6 @@ async function handleContentMessage(
     };
 
     // Batched write: accumulates for 200ms, then bulk-puts to IndexedDB
-    const { enqueueRrwebEvent } = await import('../lib/recording/event-batcher');
     enqueueRrwebEvent(sessionId, stored);
   }
 }

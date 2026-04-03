@@ -4,6 +4,7 @@
   import {
     generateGroupName,
     generateGroupSymbol,
+    formatGroupLabel,
   } from '../lib/group-naming';
   import CorrelationGroup from './CorrelationGroup.svelte';
   import SearchBar from './SearchBar.svelte';
@@ -25,20 +26,21 @@
     $replayStore.bundles,
     $replayStore.searchQuery,
     $replayStore.filters,
+    $replayStore.session?.startTime ?? 0,
   );
 
   // Determine active group: prefer the group containing the selected call,
   // fall back to time-based during playback
   $: activeGroupId = (() => {
-    // If a call is selected, find which group contains it
+    // If a call is selected, find which BUNDLED group contains it
     const selectedId = $replayStore.selectedCallId;
     if (selectedId) {
-      const group = groups.find((g) =>
-        g.requests.some((r) => r.requestId === selectedId),
+      const group = groups.find(
+        (g) => g.bundle !== null && g.requests.some((r) => r.requestId === selectedId),
       );
-      if (group) return group.bundle?.id ?? 'uncorrelated';
+      if (group) return group.bundle?.id ?? null;
     }
-    // Fall back to time-based
+    // Fall back to time-based (bundles only)
     const bundle = findActiveGroup(
       $replayStore.bundles,
       $replayStore.session
@@ -54,11 +56,22 @@
     (r) => r.statusCode && r.statusCode >= 400,
   ).length;
 
+  function makeBackgroundGroup(requests: NetworkRequest[]): DisplayGroup {
+    return {
+      bundle: null,
+      name: requests.length === 1 ? '1 background call' : `${requests.length} background calls`,
+      symbol: '♦',
+      requests,
+      correlationNote: '',
+    };
+  }
+
   function buildGroups(
     requests: NetworkRequest[],
     bundles: CorrelationBundle[],
     searchQuery: string,
     filters: FilterState,
+    sessionStart: number,
   ): DisplayGroup[] {
     const filtered = requests.filter(
       (r) => matchesFilters(r, filters) && matchesSearch(r, searchQuery),
@@ -66,10 +79,11 @@
     const filteredIds = new Set(filtered.map((r) => r.requestId));
     const requestMap = new Map(requests.map((r) => [r.requestId, r]));
 
-    const result: DisplayGroup[] = [];
+    const sortedBundles = [...bundles].sort((a, b) => a.timestamp - b.timestamp);
     const usedIds = new Set<string>();
+    const bundleGroups: { group: DisplayGroup; timestamp: number }[] = [];
 
-    for (const bundle of bundles) {
+    for (const bundle of sortedBundles) {
       const bundleRequests = bundle.apiCalls
         .map((id) => requestMap.get(id))
         .filter(
@@ -81,26 +95,40 @@
 
       bundleRequests.forEach((r) => usedIds.add(r.requestId));
 
-      const name = generateGroupName(bundle.trigger);
-      result.push({
-        bundle,
-        name,
-        symbol: generateGroupSymbol(name),
-        requests: bundleRequests,
-        correlationNote: bundle.correlation || '',
+      const rawName = generateGroupName(bundle.trigger);
+      const name = formatGroupLabel(rawName, bundle.timestamp, sessionStart);
+      bundleGroups.push({
+        group: {
+          bundle,
+          name,
+          symbol: generateGroupSymbol(rawName),
+          requests: bundleRequests,
+          correlationNote: bundle.correlation || '',
+        },
+        timestamp: bundle.timestamp,
       });
     }
 
-    const uncorrelated = filtered.filter((r) => !usedIds.has(r.requestId));
-    if (uncorrelated.length > 0) {
-      result.push({
-        bundle: null,
-        name: 'OTHER CALLS',
-        symbol: '♦',
-        requests: uncorrelated,
-        correlationNote: '',
-      });
+    const uncorrelated = filtered
+      .filter((r) => !usedIds.has(r.requestId))
+      .sort((a, b) => a.startTime - b.startTime);
+
+    // Interleave: batch uncorrelated requests between bundles chronologically
+    const result: DisplayGroup[] = [];
+    let uncorIdx = 0;
+
+    for (const { group, timestamp } of bundleGroups) {
+      const batch: NetworkRequest[] = [];
+      while (uncorIdx < uncorrelated.length && uncorrelated[uncorIdx].startTime < timestamp) {
+        batch.push(uncorrelated[uncorIdx]);
+        uncorIdx++;
+      }
+      if (batch.length > 0) result.push(makeBackgroundGroup(batch));
+      result.push(group);
     }
+
+    const trailing = uncorrelated.slice(uncorIdx);
+    if (trailing.length > 0) result.push(makeBackgroundGroup(trailing));
 
     return result;
   }
@@ -111,7 +139,7 @@
   $: if ($replayStore.isPlaying && activeGroupId && activeGroupId !== lastAutoScrollGroupId && scrollContainer) {
     lastAutoScrollGroupId = activeGroupId;
     const activeIdx = groups.findIndex(
-      (g) => (g.bundle?.id ?? 'uncorrelated') === activeGroupId,
+      (g) => g.bundle !== null && g.bundle.id === activeGroupId,
     );
     if (activeIdx >= 0) {
       const groupEls = scrollContainer.querySelectorAll('.group-wrapper');
@@ -133,8 +161,9 @@
           name={group.name}
           symbol={group.symbol}
           requests={group.requests}
-          isActive={activeGroupId === (group.bundle?.id ?? 'uncorrelated')}
+          isActive={group.bundle !== null && activeGroupId === group.bundle.id}
           correlationNote={group.correlationNote}
+          muted={group.bundle === null}
         />
       </div>
     {/each}

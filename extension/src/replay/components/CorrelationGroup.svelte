@@ -7,23 +7,45 @@
   export let requests: NetworkRequest[];
   export let isActive: boolean = false;
   export let correlationNote: string = '';
+  export let muted: boolean = false;
+
+  /** Track whether the user has explicitly expanded this muted group */
+  let userExpanded = false;
+
+  function toggleCollapse() {
+    userExpanded = !userExpanded;
+  }
+
+  $: showEntries = !muted || userExpanded;
 </script>
 
-<div class="group" class:active={isActive}>
-  <div class="group-header">
+<div class="group" class:active={isActive && !muted} class:muted>
+  <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-noninteractive-tabindex -->
+  <div
+    class="group-header"
+    class:collapsible={muted}
+    on:click={muted ? toggleCollapse : undefined}
+    role={muted ? 'button' : undefined}
+    tabindex={muted ? 0 : undefined}
+  >
     <span class="group-symbol">{symbol}</span>
     <span class="group-name">{name}</span>
-    {#if isActive}
+    {#if isActive && !muted}
       <span class="now-badge">NOW</span>
     {/if}
+    {#if muted}
+      <span class="collapse-indicator">{userExpanded ? '▾' : '▸'}</span>
+    {/if}
   </div>
-  <div class="group-entries">
-    {#each requests as request (request.requestId)}
-      <TimelineEntry {request} />
-    {/each}
-  </div>
-  {#if correlationNote}
-    <div class="correlation-note">♦ {correlationNote}</div>
+  {#if showEntries}
+    <div class="group-entries">
+      {#each requests as request (request.requestId)}
+        <TimelineEntry {request} {muted} />
+      {/each}
+    </div>
+    {#if correlationNote}
+      <div class="correlation-note">♦ {correlationNote}</div>
+    {/if}
   {/if}
 </div>
 
@@ -75,5 +97,28 @@
     font-size: 13px;
     color: var(--warning);
     padding: 2px 10px 4px;
+  }
+
+  .group.muted {
+    border-color: transparent;
+  }
+
+  .group.muted .group-header {
+    color: var(--text-muted);
+    cursor: pointer;
+  }
+
+  .group.muted .group-header:hover {
+    color: var(--text-secondary);
+  }
+
+  .collapsible {
+    user-select: none;
+  }
+
+  .collapse-indicator {
+    font-size: 10px;
+    margin-left: auto;
+    color: var(--text-muted);
   }
 </style>

@@ -113,9 +113,10 @@ toolRegistry.register(TOOL_NAMES.CAPTURE_STOP, async (args) => {
 
   if (!sessionId) throw new Error('No active capture session found');
 
-  // Stop network capture
+  // Stop network capture — returns final request count for single session write
+  let networkRequestCount = 0;
   if (tabId) {
-    await stopCapture(tabId);
+    networkRequestCount = await stopCapture(tabId);
 
     // Stop rrweb recording
     try {
@@ -131,11 +132,16 @@ toolRegistry.register(TOOL_NAMES.CAPTURE_STOP, async (args) => {
   // Flush any buffered rrweb events before closing the session
   await flushPendingEvents();
 
-  // Update session (reuse db handle from above)
+  // Collect in-memory stats before clearing engine state
+  const bundleCount = correlationEngine.getBundleCount(sessionId);
+
+  // Single atomic session write with all final stats
   const session = await database.get('sessions', sessionId);
   if (session) {
     session.status = 'stopped';
     session.endTime = Date.now();
+    session.stats.networkRequestCount = networkRequestCount;
+    session.stats.correlationBundleCount = bundleCount;
     await database.put('sessions', session);
   }
 

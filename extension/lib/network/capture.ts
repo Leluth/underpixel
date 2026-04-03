@@ -8,6 +8,7 @@ import {
 } from 'underpixel-shared';
 import { cdpSession } from './cdp-session';
 import { db } from '../storage/db';
+import { correlationEngine } from '../correlation/engine';
 
 const CDP_OWNER = 'underpixel-network';
 
@@ -56,10 +57,13 @@ export async function startCapture(
   console.log(`[UnderPixel] Network capture started on tab ${tabId}`);
 }
 
-/** Stop network capture on a tab */
-export async function stopCapture(tabId: number): Promise<void> {
+/** Stop network capture on a tab. Returns the final request count
+ *  so the caller can write it to the session in a single IDB transaction. */
+export async function stopCapture(tabId: number): Promise<number> {
   const sessionId = activeSessions.get(tabId);
-  if (!sessionId) return;
+  if (!sessionId) return 0;
+
+  const finalCount = requestCounts.get(sessionId) || 0;
 
   activeSessions.delete(tabId);
   requestCounts.delete(sessionId);
@@ -73,6 +77,7 @@ export async function stopCapture(tabId: number): Promise<void> {
   await cdpSession.detach(tabId, CDP_OWNER).catch(() => {});
 
   console.log(`[UnderPixel] Network capture stopped on tab ${tabId}`);
+  return finalCount;
 }
 
 /** Get the session config for filtering decisions (cached in memory) */
@@ -225,24 +230,15 @@ async function onLoadingFinished(
   const database = await db();
   await database.put('networkRequests', nr);
 
-  // Update count
+  // Update in-memory count (flushed to IDB in stopCapture)
   const count = (requestCounts.get(sessionId) || 0) + 1;
   requestCounts.set(sessionId, count);
 
-  // Update session stats
-  const session = await database.get('sessions', sessionId);
-  if (session) {
-    session.stats.networkRequestCount = count;
-    await database.put('sessions', session);
-  }
-
-  // Notify correlation engine (imported lazily to avoid circular deps)
-  try {
-    const { correlationEngine } = await import('../correlation/engine');
-    correlationEngine.onApiResponse(sessionId, requestId, nr.endTime!);
-  } catch {
-    // Correlation engine may not be ready yet
-  }
+  // Notify correlation engine with request info (avoids IDB re-read in buildBundle)
+  correlationEngine.onApiResponse(sessionId, requestId, nr.endTime!, {
+    method: nr.method,
+    url: nr.url,
+  });
 }
 
 function onLoadingFailed(sessionId: string, params: Record<string, unknown>) {

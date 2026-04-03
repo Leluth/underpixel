@@ -14,10 +14,12 @@
   }
 
   function formatDate(ts: number): string {
-    return new Date(ts).toLocaleDateString('en-US', {
+    return new Date(ts).toLocaleString('en-US', {
       month: 'short',
       day: 'numeric',
-      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
     });
   }
 </script>

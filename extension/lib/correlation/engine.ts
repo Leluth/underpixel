@@ -9,11 +9,31 @@ interface RecentMutation {
   attributes: number;
 }
 
+/** Minimal info needed from the network request to build a bundle trigger string */
+export interface ApiResponseInfo {
+  method: string;
+  url: string;
+}
+
+/**
+ * Backward buffer (ms) added to the correlation window to account for CDP
+ * event delivery latency.  Network.loadingFinished arrives in the background
+ * slightly *after* the page's JS callback fires and mutates the DOM, so
+ * mutations can have timestamps a few ms before `apiTime`.
+ */
+const PRE_CORRELATION_BUFFER = 100;
+
 class CorrelationEngine {
   /** sessionId -> recent DOM mutations */
   private recentMutations = new Map<string, RecentMutation[]>();
   /** Pending correlation timers */
   private pendingTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  /** Cached correlation window per session (config never changes mid-capture) */
+  private windowCache = new Map<string, number>();
+  /** In-memory bundle count per session (flushed on session end) */
+  private bundleCounts = new Map<string, number>();
+  /** Pending request info for buildBundle (avoids IDB re-read) */
+  private pendingRequestInfo = new Map<string, ApiResponseInfo>();
 
   /** Called when content script sends rrweb IncrementalSnapshot events */
   onDomMutation(sessionId: string, event: StoredRrwebEvent): void {
@@ -39,21 +59,65 @@ class CorrelationEngine {
   }
 
   /** Called when a network response completes */
-  onApiResponse(sessionId: string, requestId: string, timestamp: number): void {
+  onApiResponse(
+    sessionId: string,
+    requestId: string,
+    timestamp: number,
+    info: ApiResponseInfo,
+  ): void {
+    // Stash request info so buildBundle doesn't need to re-read from IDB
+    this.pendingRequestInfo.set(requestId, info);
+
     // Wait for the correlation window to close before building bundle
     // (DOM mutations from this API response may still be arriving)
-    this.getCorrelationWindow(sessionId).then((window) => {
-      const key = `${sessionId}:${requestId}`;
-      if (this.pendingTimers.has(key)) return; // Already pending
+    const cached = this.windowCache.get(sessionId);
+    if (cached !== undefined) {
+      this.scheduleBundle(sessionId, requestId, timestamp, cached);
+    } else {
+      this.getCorrelationWindow(sessionId).then((window) => {
+        this.windowCache.set(sessionId, window);
+        this.scheduleBundle(sessionId, requestId, timestamp, window);
+      });
+    }
+  }
 
-      this.pendingTimers.set(
-        key,
-        setTimeout(async () => {
-          this.pendingTimers.delete(key);
-          await this.buildBundle(sessionId, requestId, timestamp, window);
-        }, window),
-      );
-    });
+  /** Get the accumulated bundle count for a session */
+  getBundleCount(sessionId: string): number {
+    return this.bundleCounts.get(sessionId) || 0;
+  }
+
+  /** Clean up when a session ends */
+  clearSession(sessionId: string): void {
+    this.recentMutations.delete(sessionId);
+    this.windowCache.delete(sessionId);
+    this.bundleCounts.delete(sessionId);
+    for (const [key, timer] of this.pendingTimers) {
+      if (key.startsWith(sessionId)) {
+        clearTimeout(timer);
+        this.pendingTimers.delete(key);
+        // Clean up stashed request info (key format: "sessionId:requestId")
+        const requestId = key.slice(sessionId.length + 1);
+        this.pendingRequestInfo.delete(requestId);
+      }
+    }
+  }
+
+  private scheduleBundle(
+    sessionId: string,
+    requestId: string,
+    timestamp: number,
+    window: number,
+  ): void {
+    const key = `${sessionId}:${requestId}`;
+    if (this.pendingTimers.has(key)) return; // Already pending
+
+    this.pendingTimers.set(
+      key,
+      setTimeout(async () => {
+        this.pendingTimers.delete(key);
+        await this.buildBundle(sessionId, requestId, timestamp, window);
+      }, window),
+    );
   }
 
   private async getCorrelationWindow(sessionId: string): Promise<number> {
@@ -70,29 +134,37 @@ class CorrelationEngine {
   ): Promise<void> {
     const mutations = this.recentMutations.get(sessionId) || [];
 
-    // Find DOM mutations within [apiTime, apiTime + window]
+    // Find DOM mutations within [apiTime - buffer, apiTime + window].
+    // The backward buffer accounts for CDP event delivery latency: the
+    // page's JS callback can fire and mutate the DOM before the background
+    // receives Network.loadingFinished, so mutation timestamps may be
+    // slightly earlier than apiTime.
     const correlated = mutations.filter(
-      (m) => m.timestamp >= apiTime && m.timestamp <= apiTime + window,
+      (m) => m.timestamp >= apiTime - PRE_CORRELATION_BUFFER && m.timestamp <= apiTime + window,
     );
+
+    // Consume stashed request info regardless of whether we build a bundle
+    const info = this.pendingRequestInfo.get(requestId);
+    this.pendingRequestInfo.delete(requestId);
 
     if (correlated.length === 0) return; // API didn't cause DOM changes
 
-    const database = await db();
-    const request = await database.get('networkRequests', requestId);
-    if (!request) return;
+    // Use stashed info (from onApiResponse) to avoid an IDB read
+    const method = info?.method || 'UNKNOWN';
+    const url = info?.url || requestId;
 
     let shortUrl: string;
     try {
-      shortUrl = new URL(request.url).pathname;
+      shortUrl = new URL(url).pathname;
     } catch {
-      shortUrl = request.url;
+      shortUrl = url;
     }
 
     const bundle: CorrelationBundle = {
       id: crypto.randomUUID(),
       sessionId,
       timestamp: apiTime,
-      trigger: `${request.method} ${shortUrl}`,
+      trigger: `${method} ${shortUrl}`,
       apiCalls: [requestId],
       rrwebEventIds: [],
       domMutationSummary: {
@@ -102,19 +174,16 @@ class CorrelationEngine {
         attributeChanges: correlated.reduce((s, m) => s + m.attributes, 0),
       },
       correlation:
-        `${request.method} ${shortUrl} -> ` +
+        `${method} ${shortUrl} -> ` +
         `${correlated.reduce((s, m) => s + m.adds, 0)} nodes added, ` +
         `${correlated.reduce((s, m) => s + m.texts, 0)} text changes`,
     };
 
+    const database = await db();
     await database.put('correlationBundles', bundle);
 
-    // Update session stats
-    const session = await database.get('sessions', sessionId);
-    if (session) {
-      session.stats.correlationBundleCount++;
-      await database.put('sessions', session);
-    }
+    // Track bundle count in memory (flushed to IDB on session stop)
+    this.bundleCounts.set(sessionId, (this.bundleCounts.get(sessionId) || 0) + 1);
   }
 
   private pruneOldMutations(sessionId: string, cutoff: number): void {
@@ -122,17 +191,6 @@ class CorrelationEngine {
     if (!mutations) return;
     const pruned = mutations.filter((m) => m.timestamp >= cutoff);
     this.recentMutations.set(sessionId, pruned);
-  }
-
-  /** Clean up when a session ends */
-  clearSession(sessionId: string): void {
-    this.recentMutations.delete(sessionId);
-    for (const [key, timer] of this.pendingTimers) {
-      if (key.startsWith(sessionId)) {
-        clearTimeout(timer);
-        this.pendingTimers.delete(key);
-      }
-    }
   }
 }
 

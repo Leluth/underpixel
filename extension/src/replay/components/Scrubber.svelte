@@ -23,12 +23,20 @@
     [];
   $: {
     const reqs = $replayStore.allRequests;
+    const bundles = $replayStore.bundles;
     const start = sessionStart;
     const dur = totalDuration;
-    cachedMarkers = reqs.map((r) => ({
+    // Build set of request IDs that belong to correlation bundles
+    const correlatedIds = new Set(bundles.flatMap((b) => b.apiCalls));
+    // Uncorrelated markers first so correlated ones paint on top when overlapping
+    const uncorrelated = reqs.filter((r) => !correlatedIds.has(r.requestId));
+    const correlated = reqs.filter((r) => correlatedIds.has(r.requestId));
+    cachedMarkers = [...uncorrelated, ...correlated].map((r) => ({
       requestId: r.requestId,
       position: dur > 0 ? ((r.startTime - start) / dur) * 100 : 0,
-      color: statusColor(r.statusCode),
+      color: correlatedIds.has(r.requestId)
+        ? statusColor(r.statusCode)
+        : 'var(--text-dim)',
     }));
   }
 

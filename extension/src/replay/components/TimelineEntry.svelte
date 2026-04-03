@@ -5,9 +5,11 @@
   import { statusColor, methodColor } from '../lib/theme';
 
   export let request: NetworkRequest;
+  export let muted: boolean = false;
 
   $: isSelected = $replayStore.selectedCallId === request.requestId;
   $: isInProgress =
+    !muted &&
     $replayStore.session &&
     request.startTime <=
       $replayStore.currentTime + $replayStore.session.startTime &&
@@ -33,10 +35,11 @@
   class="entry"
   class:selected={isSelected}
   class:in-progress={isInProgress}
+  class:muted
   on:click={handleClick}
   role="button"
   tabindex="0"
-  style="border-left-color: {statusColor(request.statusCode)}"
+  style="border-left-color: {muted ? 'var(--text-muted)' : statusColor(request.statusCode)}"
 >
   <div class="entry-header">
     <div class="method-url">
@@ -58,7 +61,7 @@
     <div class="duration-track">
       <div
         class="duration-bar"
-        style="width: {durationPercent}%; background: {statusColor(request.statusCode)}"
+        style="width: {durationPercent}%; background: {muted ? 'var(--text-dim)' : statusColor(request.statusCode)}"
       ></div>
     </div>
     <span class="duration-text">{formatDuration(request.duration)}</span>
@@ -86,6 +89,15 @@
 
   .entry.in-progress {
     outline: 1px solid rgba(255, 204, 128, 0.3);
+  }
+
+  .entry.muted {
+    background: var(--deep-bg);
+    opacity: 0.7;
+  }
+
+  .entry.muted:hover {
+    opacity: 1;
   }
 
   .entry-header {
