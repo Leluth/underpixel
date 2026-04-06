@@ -49,14 +49,14 @@
 
 **Why not raw MV3**: Too much boilerplate for manifest management, HMR, multi-browser builds. WXT eliminates ~500 lines of build configuration.
 
-### 1.3 UI Framework: None (Vanilla TypeScript)
+### 1.3 UI Framework: Svelte 5 (Replay), Vanilla TS (Popup)
 
-**Why no framework for popup/replay page**:
+- **Popup**: Toggle button + settings form + MCP config display. Vanilla TS — a framework adds 30KB+ for no benefit.
+- **Replay page**: Built with **Svelte 5** (legacy/Svelte 4 syntax — not runes yet). The replay UI grew beyond a simple list into an event-based timeline with search, filtering, detail panels, and synchronized state. Svelte's reactivity model fits well with rrweb-player's time-based updates. The Svelte store (`replay-store.ts`) manages `currentTime`, `allRequests`, `bundles`, `eventSections`, `filters`, etc.
 
-- **Popup**: Toggle button + settings form. ~200 lines of DOM. A framework adds 30KB+ for no benefit.
-- **Replay page**: The main UI component is `rrweb-player`, which is a Svelte component but exposes a framework-agnostic constructor API (`new Player({ target, props })`). We mount it directly. The API timeline panel beside it is a scrollable list with click handlers — vanilla TS with CSS is cleaner and faster than introducing React/Vue.
+**Note**: rrweb-player is itself a Svelte component (v1.0.0-alpha.4). Using Svelte for the replay UI avoids the impedance mismatch of wrapping a Svelte component in a React/vanilla wrapper.
 
-**Tradeoff acknowledged**: If the replay UI grows significantly (v3+ features like dependency graph visualization, API diff viewer), we may introduce a lightweight framework (Preact at 3KB or Svelte). But for v1-v2, vanilla TS keeps the extension lean and avoids framework lock-in.
+**Caveat**: `$store.anyProp` subscribes to the entire store in Svelte 4. Avoid reading `$replayStore` in reactive blocks that don't need `currentTime` (fires at 60Hz during playback). If migrating to Svelte 5 runes, convert all components in one pass.
 
 ### 1.4 Bridge HTTP Server: Fastify
 
@@ -112,87 +112,85 @@ underpixel/
 ├── pnpm-workspace.yaml          # workspace: ["extension", "bridge", "packages/*"]
 ├── package.json                 # root scripts: build, dev, test, lint
 ├── tsconfig.base.json           # shared TS config
+├── CLAUDE.md                    # Conventions and commands for AI assistants
 │
 ├── extension/                   # Chrome extension (WXT project)
 │   ├── wxt.config.ts            # WXT + Vite config, manifest generation
-│   ├── package.json             # deps: rrweb, rrweb-player, pixelmatch, idb
+│   ├── package.json             # deps: rrweb, rrweb-player, pixelmatch, idb, svelte
 │   ├── assets/                  # Icons, pixel art branding
 │   │
 │   ├── entrypoints/
-│   │   ├── background.ts             # Service worker entry (WXT convention)
+│   │   ├── background.ts             # Service worker (orchestrator, tool dispatch, native msg)
 │   │   ├── content.ts                # Content script (ISOLATED world) — bridge
-│   │   ├── content-recorder.ts       # Content script (MAIN world) — rrweb record
-│   │   ├── popup/                    # Extension popup
+│   │   ├── content-recorder.ts       # Content script (MAIN world) — rrweb + PerformanceObserver
+│   │   ├── popup/                    # Extension popup (toggle, config, MCP CLI command display)
 │   │   │   ├── index.html
 │   │   │   ├── main.ts
 │   │   │   └── style.css
-│   │   ├── replay.html               # Extension page (opens as chrome tab)
-│   │   ├── replay/
-│   │   │   ├── main.ts               # Mounts rrweb-player + API timeline
+│   │   ├── replay/                   # Replay page (Svelte 5, rrweb-player + event-based timeline)
+│   │   │   ├── main.ts              # Svelte app mount
 │   │   │   └── style.css
-│   │   └── offscreen.html            # Offscreen document for canvas ops
+│   │   └── offscreen/               # Offscreen document for canvas pixelmatch
+│   │       └── main.ts
 │   │
-│   ├── lib/                     # Extension-internal modules
+│   ├── lib/                     # Extension-internal business logic
 │   │   ├── network/
-│   │   │   ├── capture.ts            # chrome.debugger CDP network capture
-│   │   │   └── cdp-session.ts        # Ref-counted debugger attach/detach
+│   │   │   ├── capture.ts            # CDP network capture (chrome.debugger events)
+│   │   │   └── cdp-session.ts        # Ref-counted debugger attach/detach (CDPSessionManager)
 │   │   ├── correlation/
-│   │   │   ├── engine.ts             # Timestamp-based correlation
-│   │   │   ├── types.ts              # CorrelationBundle, CorrelationWindow
-│   │   │   └── query.ts              # "What API feeds this element?"
+│   │   │   ├── engine.ts             # Timestamp-based correlation (CorrelationEngine class)
+│   │   │   └── dom-walker.ts         # rrweb snapshot DOM search (query parser + tree walker)
 │   │   ├── screenshot/
-│   │   │   ├── gate.ts               # 2-layer screenshot decision logic
-│   │   │   ├── capture.ts            # captureVisibleTab wrapper
-│   │   │   └── diff.ts               # pixelmatch in offscreen document
+│   │   │   ├── gate.ts               # 2-layer decision logic (ScreenshotGate class)
+│   │   │   └── pipeline.ts           # Capture + pixelmatch comparison (ScreenshotPipeline class)
 │   │   ├── recording/
-│   │   │   ├── session.ts            # Session lifecycle (start/stop/query)
-│   │   │   └── events.ts             # rrweb event processing + IndexedDB write
+│   │   │   └── event-batcher.ts      # Batched rrweb event persistence (200ms flush interval)
 │   │   ├── storage/
-│   │   │   ├── db.ts                 # IndexedDB schema + migrations (via idb)
-│   │   │   └── export.ts             # .underpixel file export/import
-│   │   ├── dependency/
-│   │   │   └── graph.ts              # API dependency detection (value propagation)
-│   │   ├── native/
-│   │   │   └── host.ts               # Native Messaging port management
-│   │   ├── tools/
-│   │   │   ├── registry.ts           # Tool name -> handler mapping
-│   │   │   ├── core.ts               # correlate, timeline, snapshot_at
-│   │   │   ├── network.ts            # capture_start/stop, api_calls, api_dependencies
-│   │   │   ├── visual.ts             # screenshot, dom_text, replay
-│   │   │   └── browser.ts            # navigate, interact, page_read
-│   │   └── constants.ts              # Shared constants
+│   │   │   └── db.ts                 # IndexedDB schema v1 + CRUD helpers (via idb)
+│   │   └── tools/
+│   │       ├── registry.ts           # Tool name -> handler dispatch (ToolRegistry class)
+│   │       ├── core.ts               # correlate, timeline, snapshot_at, replay, api_dependencies
+│   │       ├── network.ts            # capture_start, capture_stop, api_calls
+│   │       ├── browser.ts            # navigate, interact, page_read, screenshot, dom_text
+│   │       └── json-utils.ts         # buildLeafMap, walkJson, extractTrackableValues
 │   │
-│   └── test/                    # Extension unit tests (vitest)
+│   └── src/replay/              # Svelte components for replay UI
+│       ├── stores/
+│       │   └── replay-store.ts       # Central Svelte store (currentTime, requests, bundles, etc.)
+│       └── lib/                      # Helpers: event-sections, export, format, group-naming,
+│                                     # import, search, etc.
 │
 ├── bridge/                      # NPM package: underpixel-bridge
 │   ├── package.json             # deps: fastify, @modelcontextprotocol/sdk
 │   ├── src/
-│   │   ├── index.ts             # Entry: connect native messaging + start server
-│   │   ├── native-host.ts       # Length-prefixed JSON stdio protocol
-│   │   ├── server.ts            # Fastify HTTP server (MCP routes)
-│   │   ├── mcp.ts               # MCP server setup, tool proxy to extension
-│   │   ├── stdio-bridge.ts      # stdio MCP transport (alternative to HTTP)
-│   │   ├── cli.ts               # CLI: register, update-port
-│   │   └── scripts/
-│   │       ├── register.ts      # Write NativeMessagingHosts manifest
-│   │       ├── postinstall.ts   # npm postinstall auto-registration
-│   │       ├── run_host.sh      # Unix wrapper script (Node.js discovery)
-│   │       └── run_host.bat     # Windows wrapper script
-│   └── test/
+│   │   ├── cli.ts               # Entry point (NativeMessagingHost init + auto-start after 2s)
+│   │   ├── native-host.ts       # Length-prefixed JSON stdio protocol (NativeMessagingHost class)
+│   │   └── server.ts            # Fastify + per-session MCP (StreamableHTTPServerTransport)
+│   └── scripts/
+│       ├── register.ts          # Write NativeMessagingHosts manifest
+│       ├── postinstall.ts       # npm postinstall auto-registration
+│       ├── run_host.sh          # Unix wrapper (Node.js discovery via nvm/fnm/volta/asdf)
+│       └── run_host.bat         # Windows wrapper
 │
 ├── packages/
 │   └── shared/                  # Shared types between extension + bridge
 │       ├── package.json
 │       └── src/
-│           ├── types.ts         # NativeMessage, NativeMessageType
-│           ├── tool-schemas.ts  # MCP tool definitions (JSON Schema)
-│           └── constants.ts     # Host name, default port, protocol version
+│           ├── types.ts         # All data types: CaptureSession, NetworkRequest, StoredRrwebEvent,
+│           │                    # StoredScreenshot, CorrelationBundle, DependencyEdge,
+│           │                    # UnderpixelBundle, NativeMessage, NativeMessageType, etc.
+│           ├── tool-schemas.ts  # MCP tool definitions (TOOL_SCHEMAS array, JSON Schema)
+│           └── constants.ts     # NATIVE_HOST_NAME, EXTENSION_ID, DEFAULT_PORT (12307),
+│                                # MAX_RESPONSE_BODY_SIZE (1MB), INLINE_BODY_THRESHOLD (100KB),
+│                                # MAX_REQUESTS_PER_SESSION (500), DEFAULT_CAPTURE_CONFIG, etc.
 │
 ├── docs/
-│   ├── UNDERPIXEL_HIGHLEVEL.md  # -> symlink or copy from root
-│   └── UNDERPIXEL_TECH_DESIGN.md
+│   ├── UNDERPIXEL_HIGHLEVEL.md  # Copy of root-level high-level doc
+│   ├── UNDERPIXEL_TECH_DESIGN.md
+│   └── superpowers/             # Per-feature specs and implementation plans
+│       ├── specs/               # Design specs (brainstorm → design)
+│       └── plans/               # Implementation plans
 │
-├── README.md
 └── LICENSE                      # MIT
 ```
 
@@ -201,6 +199,8 @@ underpixel/
 - WXT uses `entrypoints/` directory convention to auto-detect background, content scripts, popup, and pages
 - Content scripts declare their `world` in the file via WXT's `export default defineContentScript({ world: 'MAIN' })` pattern
 - `lib/` contains all business logic, separated from WXT entry points for testability
+- `src/replay/` contains Svelte components, `lib/` contains framework-agnostic logic
+- API dependency detection lives in `tools/core.ts` (not a separate module) — the `extractTrackableValues` + matching logic is in `json-utils.ts`
 
 ---
 
@@ -382,14 +382,14 @@ Manifest V3 service workers have aggressive idle timeouts:
 
 ### 4.1 IndexedDB Schema
 
-Database name: `underpixel`
+Database name: `underpixel`, version: 1
 
 ```typescript
 interface UnderPixelDB {
   // Object Stores:
 
   sessions: {
-    key: string; // UUID
+    key: string; // UUID (keyPath: 'id')
     value: CaptureSession;
     indexes: {
       'by-start': number; // startTime
@@ -398,12 +398,11 @@ interface UnderPixelDB {
   };
 
   networkRequests: {
-    key: string; // requestId (from CDP)
+    key: string; // requestId (from CDP, keyPath: 'requestId')
     value: NetworkRequest;
     indexes: {
       'by-session': string; // sessionId
-      'by-session-time': [string, number]; // [sessionId, timestamp] compound
-      'by-url-pattern': string; // url (for filtering)
+      'by-session-time': [string, number]; // [sessionId, startTime] compound
     };
   };
 
@@ -413,12 +412,11 @@ interface UnderPixelDB {
     indexes: {
       'by-session': string; // sessionId
       'by-session-time': [string, number]; // [sessionId, timestamp] compound
-      'by-type': number; // EventType (for filtering)
     };
   };
 
   screenshots: {
-    key: string; // UUID
+    key: string; // UUID (keyPath: 'id')
     value: StoredScreenshot;
     indexes: {
       'by-session': string; // sessionId
@@ -427,11 +425,25 @@ interface UnderPixelDB {
   };
 
   correlationBundles: {
-    key: string; // UUID
+    key: string; // UUID (keyPath: 'id')
     value: CorrelationBundle;
     indexes: {
       'by-session': string; // sessionId
       'by-session-time': [string, number]; // [sessionId, timestamp]
+    };
+  };
+
+  responseBodies: {
+    // Large response bodies (>100KB), stored separately
+    key: string; // requestId (keyPath: 'requestId')
+    value: {
+      requestId: string;
+      sessionId: string;
+      body: string;
+      base64Encoded: boolean;
+    };
+    indexes: {
+      'by-session': string; // sessionId
     };
   };
 }
@@ -470,7 +482,7 @@ interface CaptureConfig {
   screenshotsEnabled: boolean; // default: true
   maxScreenshotsPerSession: number; // default: 100
   screenshotInterval: number; // default: 500ms
-  pixelDiffThreshold: 'auto' | number; // default: 'auto'
+  pixelDiffThreshold: number; // default: 0.01 (1% of pixels must differ)
 
   // Correlation
   correlationWindow: number; // default: 500ms
@@ -561,35 +573,27 @@ interface CorrelationBundle {
 
 ### 4.3 Large Response Body Strategy
 
-Response bodies over 100KB are stored in a separate IndexedDB object store (`responseBodies`) to keep the main `networkRequests` store scannable. The `NetworkRequest` object holds a `responseBodyRef` key instead of the full body. When an MCP tool requests full body details, it does a secondary lookup.
+Response bodies over 100KB (`INLINE_BODY_THRESHOLD` in constants) are stored in the `responseBodies` IndexedDB object store (defined in 4.1 above) to keep the main `networkRequests` store scannable. The `NetworkRequest` object holds a `responseBodyRef` key (= requestId) instead of the full body. When an MCP tool requests full body details (e.g., `api_calls` with `includeBody: true`), it does a secondary lookup.
 
-```typescript
-// Object Store
-responseBodies: {
-  key: string; // same as requestId
-  value: {
-    requestId: string;
-    sessionId: string;
-    body: string; // full response body
-    base64Encoded: boolean;
-  }
-}
-```
+**Thresholds** (from `packages/shared/src/constants.ts`):
 
-Cap: 1MB per response body (same as mcp-chrome). Bodies exceeding this are truncated with a `[truncated at 1MB]` marker.
+- `INLINE_BODY_THRESHOLD`: 100KB — bodies smaller than this are stored inline in `networkRequests.responseBody`
+- `MAX_RESPONSE_BODY_SIZE`: 1MB — bodies exceeding this are truncated with a `[truncated at 1MB]` marker
+
+**Important**: Don't change these thresholds without updating both `capture.ts` (storage logic) and the `api_calls` tool handler (retrieval logic).
 
 ### 4.4 Session Export Format (.underpixel)
 
 ```typescript
-interface UnderPixelExport {
+interface UnderpixelBundle {
   version: 1;
   exportedAt: number;
+  exportOptions: ExportOptions; // what was included/excluded
   session: CaptureSession;
-  rrwebEvents: StoredRrwebEvent[]; // full event stream
   networkRequests: NetworkRequest[]; // with inline response bodies
+  rrwebEvents: StoredRrwebEvent[]; // full event stream
   screenshots: StoredScreenshot[]; // base64 included
   correlationBundles: CorrelationBundle[];
-  dependencyEdges?: DependencyEdge[]; // if computed
 }
 
 // File format: JSON → gzip → .underpixel extension
@@ -656,12 +660,19 @@ window.addEventListener('message', (e) => {
             '*',
           );
         },
-        sampling: config.sampling,
+        checkoutEveryNms: 5000, // Full snapshots every 5s for reliable seeking
+        sampling: {
+          mousemove: config.sampling?.mousemove ?? 100,
+          scroll: config.sampling?.scroll ?? 150,
+          input: 'last',
+        },
         maskAllInputs: config.maskInputs,
         maskTextSelector: config.maskTextSelector,
         blockSelector: '.underpixel-block',
         slimDOMOptions: 'all', // Remove comments, <head> cruft
         recordAfter: 'DOMContentLoaded',
+        // NOTE: inlineImages: false — broken in this rrweb alpha (rrweb-io/rrweb#1218)
+        // Causes seek crashes on cross-origin-heavy pages. Enable when fixed.
       }) || null;
   }
 
@@ -725,12 +736,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
 ### 5.4 Network Capture Module (`lib/network/capture.ts`)
 
-References mcp-chrome's `network-capture-debugger.ts` pattern. Key adaptations:
+References mcp-chrome's `network-capture-debugger.ts` pattern. Uses module-level state (not a class):
 
 ```typescript
-class NetworkCapture {
-  private sessions = new Map<number, string>(); // tabId -> sessionId
-  private db: IDBPDatabase<UnderPixelDB>;
+// Module-level state
+const activeSessions = new Map<number, string>();  // tabId -> sessionId
+const pendingRequests = new Map<string, NetworkRequest>(); // cdpRequestId -> stub
+const requestCounts = new Map<string, number>();    // sessionId -> count
+const sessionConfigs = new Map<string, CaptureConfig>(); // sessionId -> config
 
   async start(tabId: number, sessionId: string, config: CaptureConfig): Promise<void> {
     // 1. Attach debugger via CDPSession manager (ref-counted)
@@ -772,9 +785,7 @@ class NetworkCapture {
     // Fetch response body via CDP
     try {
       const { body, base64Encoded } = await cdpSession.sendCommand(
-        tabId,
-        'Network.getResponseBody',
-        { requestId },
+        tabId, 'Network.getResponseBody', { requestId }
       );
 
       // Enforce size limit
@@ -794,6 +805,7 @@ class NetworkCapture {
 
       // Notify correlation engine
       correlationEngine.onApiResponse(sessionId, requestId, Date.now());
+
     } catch (e) {
       // Response body may not be available (e.g., redirects, aborted)
     }
@@ -807,11 +819,11 @@ class NetworkCapture {
     }
     // 2. Check domain blocklist
     const domain = new URL(url).hostname;
-    if (config.excludeDomains.some((d) => domain.endsWith(d))) {
+    if (config.excludeDomains.some(d => domain.endsWith(d))) {
       return false;
     }
     // 3. Check domain allowlist (if set)
-    if (config.includeDomains && !config.includeDomains.some((d) => domain.endsWith(d))) {
+    if (config.includeDomains && !config.includeDomains.some(d => domain.endsWith(d))) {
       return false;
     }
     return true;
@@ -841,150 +853,125 @@ const DEFAULT_EXCLUDED_DOMAINS = [
 ];
 ```
 
-### 5.5 Screenshot Gate (`lib/screenshot/gate.ts`)
+### 5.5 Screenshot System (`lib/screenshot/gate.ts` + `pipeline.ts`)
 
-Two-layer decision system for when to take automatic screenshots.
+The screenshot system is split into two classes: **ScreenshotGate** (Layer 1: decides _when_ to trigger) and **ScreenshotPipeline** (Layer 2: captures, diffs, stores).
+
+#### ScreenshotGate — Layer 1: Decision Logic
 
 ```typescript
 class ScreenshotGate {
   private dirty = false;
-  private stabilityTimer: number | null = null;
-  private lastScreenshotTime = 0;
+  private debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastScreenshotTime: number | null = null;
   private screenshotCount = 0;
 
-  // Called by background when content script reports rrweb mutation events
-  onDomMutation(sessionId: string, timestamp: number) {
+  // Called on any change signal (API response, DOM mutation, layout shift)
+  onEvent() {
     this.dirty = true;
-    this.resetStabilityWait(sessionId);
+    // Debounce 500ms — multiple triggers within window = one check
+    if (this.debounceTimer) clearTimeout(this.debounceTimer);
+    this.debounceTimer = setTimeout(() => this.tryFire(), this.config.screenshotInterval);
   }
 
-  // Called by background when content script reports layout-shift
-  onLayoutShift(sessionId: string, value: number) {
-    this.dirty = true;
-    this.resetStabilityWait(sessionId);
+  // Called on URL change — bypass debounce, always trigger
+  onNavigation() {
+    this.config.onReady(); // → triggers pipeline.captureNavigation() directly
   }
 
-  // Called by correlation engine when API response received AND dom mutations followed
-  onCorrelatedApiResponse(sessionId: string) {
-    this.dirty = true;
-    this.resetStabilityWait(sessionId);
-  }
-
-  // Called on URL/hash navigation — always capture, skip Layer 2
-  async onNavigation(sessionId: string, tabId: number) {
-    await this.captureScreenshot(sessionId, tabId, 'navigation', /* skipDiff */ true);
-  }
-
-  private resetStabilityWait(sessionId: string) {
-    if (this.stabilityTimer) clearTimeout(this.stabilityTimer);
-
-    this.stabilityTimer = setTimeout(async () => {
-      if (!this.dirty) return;
-      this.dirty = false;
-
-      // Layer 1 passed: something changed + page is stable
-      // Proceed to Layer 2 (or skip if config says 'auto')
-      await this.evaluateScreenshot(sessionId);
-    }, this.config.screenshotInterval); // debounce window (default 500ms)
-  }
-
-  private async evaluateScreenshot(sessionId: string) {
-    const tabId = this.getTabId(sessionId);
-    if (!tabId) return;
-
-    // Check limits
+  private tryFire() {
+    if (!this.dirty) return;
+    this.dirty = false;
+    // Guard: max screenshots reached?
     if (this.screenshotCount >= this.config.maxScreenshotsPerSession) return;
-    if (Date.now() - this.lastScreenshotTime < this.config.screenshotInterval) return;
-
-    if (this.config.pixelDiffThreshold === 'auto') {
-      // Auto mode: skip pixel diff, trust rrweb + stability gate
-      await this.captureScreenshot(sessionId, tabId, 'dom-mutation');
-    } else {
-      // Pixel diff mode: Layer 2
-      await this.captureWithDiff(sessionId, tabId);
-    }
+    // Guard: minimum interval elapsed?
+    if (
+      this.lastScreenshotTime &&
+      Date.now() - this.lastScreenshotTime < this.config.screenshotInterval
+    )
+      return;
+    // Trigger pipeline
+    this.config.onReady();
   }
 
-  private async captureWithDiff(sessionId: string, tabId: number) {
-    const dataUrl = await chrome.tabs.captureVisibleTab({ format: 'png' });
-
-    // Send to offscreen document for pixelmatch comparison
-    const diffResult = await chrome.runtime.sendMessage({
-      type: 'offscreen-diff',
-      currentImage: dataUrl,
-      sessionId,
-    });
-
-    if (diffResult.diffPercent > this.config.pixelDiffThreshold) {
-      await this.saveScreenshot(sessionId, dataUrl, 'dom-mutation', diffResult.diffPercent);
-    }
-    // else: pixels didn't change enough, skip
+  // Called after successful screenshot store
+  recordScreenshot() {
+    this.screenshotCount++;
+    this.lastScreenshotTime = Date.now();
   }
 }
 ```
 
-### 5.6 Offscreen Document (`offscreen.html`)
+#### ScreenshotPipeline — Layer 2: Capture + Diff
+
+```typescript
+class ScreenshotPipeline {
+  private previousDataUrl: string | null = null;
+
+  async captureAndCompare(tabId: number, sessionId: string) {
+    // Capture via chrome.tabs.captureVisibleTab (JPEG, quality 50)
+    const dataUrl = await chrome.tabs.captureVisibleTab(/* windowId */, { format: 'jpeg', quality: 50 });
+
+    if (!this.previousDataUrl) {
+      // First screenshot: store directly, no diff needed
+      await this.store(sessionId, dataUrl, 'dom-mutation');
+      this.previousDataUrl = dataUrl;
+      return { stored: true };
+    }
+
+    // Send both images to offscreen document for pixelmatch comparison
+    const { diffRatio } = await sendToOffscreen({
+      type: 'pixel-diff',
+      previous: this.previousDataUrl,
+      current: dataUrl,
+    });
+
+    if (diffRatio > this.config.pixelDiffThreshold) { // default: 0.01 = 1%
+      await this.store(sessionId, dataUrl, 'dom-mutation', diffRatio);
+      this.previousDataUrl = dataUrl;
+      return { stored: true, diffRatio };
+    }
+
+    return { stored: false, diffRatio }; // Pixels didn't change enough
+  }
+
+  // Navigation screenshots bypass pixelmatch — always store
+  async captureNavigation(tabId: number, sessionId: string) {
+    const dataUrl = await chrome.tabs.captureVisibleTab(/* windowId */, { format: 'jpeg', quality: 50 });
+    await this.store(sessionId, dataUrl, 'navigation');
+    this.previousDataUrl = dataUrl;
+  }
+
+  reset() { this.previousDataUrl = null; }
+}
+```
+
+````
+
+### 5.6 Offscreen Document (`entrypoints/offscreen/main.ts`)
 
 Handles canvas operations that service workers cannot do (no DOM/Canvas API in service workers).
 
 **Responsibilities**:
+- Receive two screenshot data URLs (previous + current) from the background via message
+- Decode both to canvas, extract ImageData
+- Run pixelmatch to compute diff ratio
+- Return `{ diffRatio, width, height }`
 
-- Receive screenshot as data URL from background
-- Decode to canvas, extract ImageData
-- Run pixelmatch against previous screenshot for same session
-- Return diff percentage
-
+**Message protocol**:
 ```typescript
-// offscreen/main.ts
-import pixelmatch from 'pixelmatch';
+// Request (from ScreenshotPipeline → offscreen):
+{ type: 'pixel-diff', previous: string /* dataUrl */, current: string /* dataUrl */ }
 
-const previousImages = new Map<string, ImageData>(); // sessionId -> last ImageData
+// Response:
+{ diffRatio: number, width: number, height: number }
+````
 
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (msg.type !== 'offscreen-diff') return false;
-
-  handleDiff(msg.sessionId, msg.currentImage).then(sendResponse);
-  return true; // async response
-});
-
-async function handleDiff(sessionId: string, dataUrl: string): Promise<{ diffPercent: number }> {
-  const img = await loadImage(dataUrl);
-  const canvas = new OffscreenCanvas(img.width, img.height);
-  const ctx = canvas.getContext('2d')!;
-  ctx.drawImage(img, 0, 0);
-  const currentData = ctx.getImageData(0, 0, img.width, img.height);
-
-  const previous = previousImages.get(sessionId);
-  previousImages.set(sessionId, currentData);
-
-  if (!previous || previous.width !== currentData.width || previous.height !== currentData.height) {
-    return { diffPercent: 100 }; // first screenshot or size changed
-  }
-
-  const diffPixels = pixelmatch(
-    previous.data,
-    currentData.data,
-    null,
-    currentData.width,
-    currentData.height,
-    { threshold: 0.1 },
-  );
-
-  const totalPixels = currentData.width * currentData.height;
-  return { diffPercent: (diffPixels / totalPixels) * 100 };
-}
-
-async function loadImage(dataUrl: string): Promise<ImageBitmap> {
-  const response = await fetch(dataUrl);
-  const blob = await response.blob();
-  return createImageBitmap(blob);
-}
-```
+The pipeline (not the offscreen doc) manages previous-image state. The offscreen document is stateless — it just compares two images and returns the result. This avoids stale state in the offscreen document across sessions.
 
 **Offscreen document creation** (in background.ts):
 
 ```typescript
-// Create offscreen document once, reuse
 async function ensureOffscreenDocument() {
   const existing = await chrome.offscreen.hasDocument();
   if (!existing) {
@@ -997,66 +984,49 @@ async function ensureOffscreenDocument() {
 }
 ```
 
-### 5.7 Replay Page (`replay/main.ts`)
+### 5.7 Replay Page (`entrypoints/replay/` + `src/replay/`)
 
-Extension page opened as a Chrome tab (`chrome-extension://EXTENSION_ID/replay.html`).
+Extension page opened as a Chrome tab (`chrome-extension://EXTENSION_ID/replay.html?sessionId=...&t=...`).
 
-**Layout**: Split pane — rrweb-player left, API timeline right, synced by timestamp.
+**Tech**: Svelte 5 (legacy/Svelte 4 syntax), rrweb-player 1.0.0-alpha.4, Cozy Pixel RPG theme.
 
-```typescript
-import Player from 'rrweb-player';
-import 'rrweb-player/dist/style.css';
+**Architecture**:
 
-async function initReplay(sessionId: string) {
-  const db = await openDB();
-
-  // Load data from IndexedDB
-  const events = await db.getAllFromIndex('rrwebEvents', 'by-session', sessionId);
-  const requests = await db.getAllFromIndex('networkRequests', 'by-session', sessionId);
-  const bundles = await db.getAllFromIndex('correlationBundles', 'by-session', sessionId);
-
-  // Convert StoredRrwebEvent back to rrweb eventWithTime format
-  const rrwebEvents = events.map((e) => ({
-    type: e.type,
-    data: e.data,
-    timestamp: e.timestamp,
-  }));
-
-  // Mount rrweb-player
-  const player = new Player({
-    target: document.getElementById('player-container')!,
-    props: {
-      events: rrwebEvents,
-      width: 800,
-      height: 600,
-      autoPlay: false,
-      showController: true,
-      speedOption: [1, 2, 4, 8],
-    },
-  });
-
-  // Build API timeline
-  const timeline = new ApiTimeline({
-    container: document.getElementById('timeline-container')!,
-    requests,
-    bundles,
-    onClickRequest: (request) => {
-      // Seek player to the moment this API call completed
-      const timeOffset = request.endTime - rrwebEvents[0].timestamp;
-      player.goto(timeOffset);
-    },
-  });
-
-  // Sync: as player plays, highlight current API calls in timeline
-  const replayer = player.getReplayer();
-  replayer.on('event-cast', (event: any) => {
-    const currentTime = replayer.getCurrentTime() + rrwebEvents[0].timestamp;
-    timeline.highlightAtTime(currentTime);
-  });
-}
+```
+entrypoints/replay/main.ts     → Svelte app mount point
+src/replay/stores/replay-store.ts → Central state (Svelte writable store)
+src/replay/lib/                → Framework-agnostic helpers
+  ├── event-sections.ts        → Group API calls into EventSections
+  ├── group-naming.ts          → Auto-name event groups ("Page Load", "User Click", etc.)
+  ├── search.ts                → Search/filter across API calls
+  ├── format.ts                → Formatting utilities
+  ├── export.ts                → Session export logic
+  └── import.ts                → Session import logic
 ```
 
-**ApiTimeline** is a vanilla TS class that renders a scrollable list of API calls, each showing method, URL, status, duration. Clicking one seeks the player. Playing the player scrolls the timeline to show concurrent API calls.
+**Replay Store** (`replay-store.ts`):
+
+```typescript
+interface ReplayState {
+  currentTime: number;           // synced with rrweb-player (updates at ~60Hz during play)
+  session: CaptureSession | null;
+  allRequests: NetworkRequest[];
+  bundles: CorrelationBundle[];
+  eventSections: EventSection[];  // API calls grouped by UI events
+  detailCallId: string | null;   // Selected API call for detail view
+  searchQuery: string;
+  filters: FilterState;
+  isPlaying: boolean;
+}
+
+// Derived helpers (outside store to avoid 60Hz re-computation)
+findCallsAtTime(requests, currentTime) → NetworkRequest[]
+findActiveEvent(sections, currentTime) → EventSection | null
+```
+
+**Event-based Timeline**: API calls are grouped into `EventSection` objects (e.g., "Page Load", "User Clicked 'OKRs'", "Form Submit") based on correlation bundles and timing gaps. This is more useful than a flat list because it shows _why_ API calls happened.
+
+**Known caveat**: `$replayStore.currentTime` fires at 60Hz during playback. Any Svelte reactive block that reads `$replayStore` will re-run at 60Hz. Components that don't need `currentTime` should avoid subscribing to the full store.
 
 ### 5.8 Bridge — Native Messaging Host (`bridge/src/native-host.ts`)
 
@@ -1142,35 +1112,61 @@ class NativeMessagingHost {
 }
 ```
 
-### 5.9 Bridge — MCP Server (`bridge/src/mcp.ts`)
+### 5.9 Bridge — MCP Server (`bridge/src/server.ts`)
+
+The server creates **per-session MCP instances** using `StreamableHTTPServerTransport` from the official SDK. Each MCP client session gets its own transport + `McpServer` instance (required by the SDK — one `Protocol` per transport).
 
 ```typescript
+import Fastify from 'fastify';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { TOOL_SCHEMAS } from 'underpixel-shared';
 
-export function createMcpServer(host: NativeMessagingHost): McpServer {
-  const server = new McpServer({
-    name: 'underpixel',
-    version: '1.0.0',
+async function createServer(host: NativeMessagingHost, port: number) {
+  const app = Fastify();
+  const transports = new Map<string, StreamableHTTPServerTransport>();
+
+  // Ping endpoint
+  app.get('/ping', () => ({ status: 'ok', message: 'pong' }));
+
+  // MCP request/response
+  app.post('/mcp', async (req, reply) => {
+    const sessionId = req.headers['mcp-session-id'] as string;
+    let transport = transports.get(sessionId);
+
+    if (!transport) {
+      // First request (initialize) — create new session
+      transport = new StreamableHTTPServerTransport({ sessionIdGenerator: () => sessionId });
+      transports.set(sessionId, transport);
+      const mcpServer = createMcpServer(host);
+      await mcpServer.connect(transport);
+    }
+
+    await transport.handleRequest(req.raw, reply.raw);
   });
 
-  // Register all tools from shared schema definitions
+  // MCP event stream (SSE) + session cleanup (DELETE)
+  app.get('/mcp', async (req, reply) => {
+    /* SSE handling */
+  });
+  app.delete('/mcp', async (req, reply) => {
+    /* cleanup transport */
+  });
+
+  await app.listen({ host: '127.0.0.1', port });
+}
+
+function createMcpServer(host: NativeMessagingHost): McpServer {
+  const server = new McpServer({ name: 'underpixel', version: '1.0.0' });
+
+  // Register ListToolsRequest handler → return TOOL_SCHEMAS
+  // Register CallToolRequest handler → proxy to extension via host.callTool()
   for (const schema of TOOL_SCHEMAS) {
     server.tool(schema.name, schema.description, schema.inputSchema, async (params) => {
-      try {
-        const result = await host.callTool(schema.name, params);
-        return {
-          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-        };
-      } catch (error: any) {
-        return {
-          content: [{ type: 'text', text: `Error: ${error.message}` }],
-          isError: true,
-        };
-      }
+      const result = await host.callTool(schema.name, params);
+      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
     });
   }
-
   return server;
 }
 ```
@@ -1324,47 +1320,42 @@ class CorrelationEngine {
 
 ### 6.2 Querying Correlations (`underpixel_correlate`)
 
-When Claude Code asks "What API feeds the user table?", the `correlate` tool:
+When Claude Code asks "What API feeds the user table?", the `correlate` tool uses three strategies in parallel:
 
-1. **Interpret the query**: Extract target — could be CSS selector (`#user-table`), text content (`"user table"`), or element description
-2. **Find matching DOM content**: Search rrweb full snapshots and incremental mutations for elements matching the query (by ID, class, text content, or aria-label)
-3. **Find correlation bundles**: Look up bundles whose rrweb events include mutations to those elements
-4. **Return matched API calls**: Return the network requests referenced in those bundles
+1. **Forward path** (API → DOM): Text/word search across API response bodies and URLs. Finds which API responses contain the queried content.
+2. **Reverse path** (DOM → API): Uses `dom-walker.ts` to search rrweb full snapshots and mutation events for matching DOM elements, then finds correlated API calls via correlation bundles.
+3. **Value-level correlation**: Builds a leaf-value map from API response JSON (`json-utils.ts: buildLeafMap`), then searches for DOM text values in those maps. Returns specific JSON field paths that match DOM content.
+
+**Query parser** (`dom-walker.ts`) supports:
+
+- `#id` → match by HTML ID
+- `.class` → match by CSS class (case-insensitive)
+- `[attr="value"]` → match by attribute (src, href, alt, data-\*, etc.)
+- Plain text → match against content (id, class, aria-label, tag name, text content, data-\* attrs)
 
 ```typescript
 async function correlate(query: string, sessionId?: string): Promise<CorrelateResult> {
   const session = sessionId ? await db.get('sessions', sessionId) : await getLatestSession();
 
-  // Strategy 1: Query is a CSS selector
-  if (query.startsWith('#') || query.startsWith('.') || query.includes('[')) {
-    return correlateBySelector(query, session.id);
-  }
+  // Parallel fetch: all requests, bundles, rrweb events
+  const [requests, bundles, rrwebEvents] = await Promise.all([...]);
 
-  // Strategy 2: Query is free text — search API response bodies + DOM text
-  return correlateByText(query, session.id);
-}
+  // Forward path: text search on URLs + response bodies (word matching)
+  const matchedApiCalls = findMatchingApis(requests, query);
 
-async function correlateByText(query: string, sessionId: string): Promise<CorrelateResult> {
-  const queryLower = query.toLowerCase();
+  // Reverse path: DOM element search via rrweb snapshots → find correlated APIs
+  const domMatches = searchDom(rrwebEvents, query); // uses dom-walker.ts
 
-  // Search network response bodies for the query text
-  const requests = await db.getAllFromIndex('networkRequests', 'by-session', sessionId);
-  const matchingApis = requests.filter((r) => {
-    const body = r.responseBody || '';
-    return body.toLowerCase().includes(queryLower);
-  });
-
-  // Search correlation bundles that reference these APIs
-  const bundles = await db.getAllFromIndex('correlationBundles', 'by-session', sessionId);
-  const matchingBundles = bundles.filter((b) =>
-    b.apiCalls.some((id) => matchingApis.some((a) => a.requestId === id)),
-  );
+  // Value-level correlation: DOM text values → JSON leaf paths
+  const valueCorrelations = findValueCorrelations(domMatches, requests);
+  // e.g., "John Doe" found in DOM → matched to response.data.users[0].name
 
   return {
-    query,
-    matchedApiCalls: matchingApis.map(summarizeRequest),
+    summary: "...",
+    matchedApiCalls,
     correlationBundles: matchingBundles,
-    confidence: matchingBundles.length > 0 ? 'high' : 'medium',
+    domMatches,
+    valueCorrelations,
   };
 }
 ```
@@ -1763,7 +1754,7 @@ Each permission requested has a clear, necessary purpose:
 
 ## 10. Implementation Plan
 
-### Phase 1: Skeleton + Network Capture + MCP (Days 1-2) ✅ COMPLETE
+### Phase 1: Skeleton + Network Capture + MCP (Days 1-2)
 
 **Goal**: Extension loads, bridge connects, one MCP tool works end-to-end.
 
@@ -1787,13 +1778,12 @@ Each permission requested has a clear, necessary purpose:
    - Implement `cli.ts` with `register` command
 
 4. **Bridge — MCP server**
-   - Implement `server.ts` (Fastify, `/mcp` and `/ping` routes)
-   - Implement `mcp.ts` (McpServer with tool proxy)
+   - Implement `server.ts` (Fastify, `/mcp` and `/ping` routes, per-session MCP transports)
    - Wire: native host receives `START` from extension → starts HTTP server
 
 5. **Extension — Background + Native Messaging**
    - `background.ts`: initialize, connect to native host via `chrome.runtime.connectNative`
-   - `lib/native/host.ts`: port management, message routing, reconnection
+   - Native Messaging port management inline in background.ts
    - `lib/tools/registry.ts`: tool name → handler dispatch
 
 6. **Extension — Network capture (CDP)**
@@ -1826,28 +1816,30 @@ cd extension && pnpm dev  # WXT dev mode with HMR
 #    Verify: see list of captured XHR/fetch requests with headers and bodies
 ```
 
-### Phase 2: rrweb Recording + Correlation (Days 3-4) ✅ FUNCTIONALLY COMPLETE
+### Phase 2: rrweb Recording + Correlation (Days 3-4)
 
 **Goal**: DOM recording works, correlation engine produces bundles.
 
 **Steps**:
 
-1. ✅ **Content scripts**
+1. **Content scripts**
    - `content-recorder.ts` (MAIN world): rrweb.record() + PerformanceObserver
    - `content.ts` (ISOLATED world): postMessage bridge to background
    - Wire: background sends start/stop commands, receives rrweb events
 
-2. ✅ **Recording manager** (different file structure than planned)
-   - `lib/recording/session.ts` → session lifecycle split across `tools/network.ts` (capture_start/stop) and `background.ts`
-   - `lib/recording/events.ts` → implemented as `lib/recording/event-batcher.ts` (200ms batched writes to IndexedDB)
-   - No standalone session manager module — session creation/config is inline in capture_start
+2. **Recording manager**
+   - `lib/recording/event-batcher.ts`: batched rrweb event persistence
+   - `enqueueRrwebEvent()`: buffers events in memory, notifies correlation engine immediately
+   - Batch writes: accumulate events for 200ms, then bulk-add to IndexedDB in single transaction
+   - `flushPendingEvents()`: force-flush on capture stop
 
-3. ✅ **Correlation engine**
-   - `lib/correlation/engine.ts`: timestamp matching logic
-   - `lib/correlation/types.ts` → types live in `packages/shared/src/types.ts` (CorrelationBundle, etc.)
+3. **Correlation engine**
+   - `lib/correlation/engine.ts`: timestamp matching logic (CorrelationEngine class)
+   - `lib/correlation/dom-walker.ts`: rrweb snapshot DOM search for correlate tool
+   - Types defined in `packages/shared/src/types.ts` (CorrelationBundle, etc.)
    - Wire: network capture notifies engine on API response, engine checks for recent DOM mutations
 
-4. ✅ **Core MCP tools**
+4. **Core MCP tools**
    - `underpixel_correlate`: query by text/selector → find matching API calls
    - `underpixel_timeline`: return chronological bundles
    - `underpixel_capture_stop`: stop capture, return summary with correlation count
@@ -1865,32 +1857,32 @@ cd extension && pnpm dev  # WXT dev mode with HMR
 # Verify: returns correlated API calls with DOM mutation summary
 ```
 
-### Phase 3: Smart Screenshots + Replay UI (Days 5-7) — PARTIALLY COMPLETE
+### Phase 3: Smart Screenshots + Replay UI (Days 5-7)
 
 **Goal**: Screenshots taken intelligently, replay page works.
 
 **Steps**:
 
-1. **Offscreen document** — NOT YET
+1. **Offscreen document**
    - `offscreen.html` + handler for pixelmatch diffing
    - Background creates offscreen doc on first screenshot need
 
-2. **Screenshot gate** — NOT YET
-   - `lib/screenshot/gate.ts`: 2-layer decision logic
-   - `lib/screenshot/capture.ts`: captureVisibleTab wrapper with rate limiting
-   - Wire: rrweb mutations + layout shifts → gate → offscreen diff → save
+2. **Screenshot system**
+   - `lib/screenshot/gate.ts`: ScreenshotGate — Layer 1 decision logic (dirty flag, debounce, limits)
+   - `lib/screenshot/pipeline.ts`: ScreenshotPipeline — Layer 2 capture + pixelmatch diff
+   - Wire: rrweb mutations + layout shifts → gate → pipeline → offscreen diff → save
 
-3. ✅ **On-demand screenshot tool**
+3. **On-demand screenshot tool**
    - `underpixel_screenshot`: always works, bypasses gate limits
    - Support viewport and full-page (scroll-stitch from mcp-chrome pattern)
 
-4. **Replay page** — NOT YET (stub exists: `underpixel_replay` opens tab, but replay UI not built)
+4. **Replay page**
    - `replay.html` + `replay/main.ts`: mount rrweb-player
    - API timeline panel: scrollable list synced with player
    - Click API call → seek player; play → scroll timeline
    - `underpixel_replay` tool: opens replay tab, returns URL
 
-5. ✅ **Additional tools**
+5. **Additional tools**
    - `underpixel_snapshot_at`: nearest screenshot + API calls at timestamp
    - `underpixel_dom_text`: extract text via injected content script
 
@@ -1906,30 +1898,31 @@ cd extension && pnpm dev  # WXT dev mode with HMR
 # Screenshots were taken automatically at visual change points
 ```
 
-### Phase 4: Browser Control + Dependency Graph + Export (Days 8-10) — PARTIALLY COMPLETE
+### Phase 4: Browser Control + Dependency Graph + Export (Days 8-10)
 
 **Goal**: Full tool surface, dependency detection, session export.
 
 **Steps**:
 
-1. ✅ **Browser control tools**
+1. **Browser control tools**
    - `underpixel_navigate`: chrome.tabs.update / chrome.tabs.create
    - `underpixel_interact`: inject click/fill/scroll/type helper scripts
    - `underpixel_page_read`: inject accessibility tree helper
+   - Reference mcp-chrome's helper script patterns
 
-2. ✅ **API dependency graph**
-   - Value propagation algorithm in `lib/tools/core.ts` (extractTrackableValues + walkJson)
-   - `underpixel_api_dependencies` tool: returns edge list with JWT/UUID/token/ID tracking
+2. **API dependency graph**
+   - Value propagation algorithm in `lib/tools/core.ts` + `lib/tools/json-utils.ts` (no separate dependency module)
+   - `underpixel_api_dependencies` tool: returns edge list
 
-3. **Session export/import** — NOT YET
+3. **Session export/import**
    - `lib/storage/export.ts`: gather all data → JSON → gzip → .underpixel
    - Export button in replay UI
    - Import: open .underpixel file → load into fresh IndexedDB session
 
-4. ✅ **Popup improvements** (partial)
-   - Show active session stats (request count, screenshot count, correlations)
-   - Domain filter configuration — NOT YET
-   - Session list with delete option — NOT YET
+4. **Popup improvements**
+   - Show active session stats (request count, screenshot count)
+   - Domain filter configuration
+   - Session list with delete option
 
 **Verification**:
 
@@ -1978,25 +1971,33 @@ cd extension && pnpm dev  # WXT dev mode with HMR
 ### 12.1 Unit Tests (vitest)
 
 ```
-extension/test/
+extension/lib/
 ├── correlation/
-│   ├── engine.test.ts        # Timestamp matching, bundle building
-│   └── query.test.ts         # Text/selector correlation queries
-├── dependency/
-│   └── graph.test.ts         # Value propagation algorithm
+│   ├── engine.test.ts          # Timestamp matching, bundle building
+│   └── dom-walker.test.ts      # Query parser, rrweb snapshot tree walking
 ├── screenshot/
-│   └── gate.test.ts          # Layer 1/2 decision logic
-├── storage/
-│   └── db.test.ts            # IndexedDB operations (fake-indexeddb)
-├── network/
-│   └── capture.test.ts       # Request filtering, body handling
-└── tools/
-    └── schemas.test.ts       # Tool schema validation
+│   ├── gate.test.ts            # Layer 1 decision logic (dirty flag, debounce, limits)
+│   └── pipeline.test.ts       # Layer 2 capture + diff logic
+├── tools/
+│   └── core.test.ts           # Correlate tool, dependency detection
 
-bridge/test/
-├── native-host.test.ts       # Length-prefixed protocol parsing
-├── mcp.test.ts               # Tool proxy, error handling
-└── server.test.ts            # HTTP routes
+extension/src/replay/
+├── lib/                        # Replay helper tests
+│   ├── event-sections.test.ts  # EventSection grouping
+│   ├── export.test.ts          # Session export
+│   ├── format.test.ts          # Formatting utilities
+│   ├── group-naming.test.ts    # Auto-name generation
+│   ├── import.test.ts          # Session import
+│   └── search.test.ts          # Search/filter logic
+└── stores/
+    └── replay-store.test.ts    # Store helpers (findCallsAtTime, etc.)
+
+bridge/src/
+└── native-host.test.ts         # Length-prefixed protocol parsing
+
+packages/shared/src/
+├── constants.test.ts           # Default config validation
+└── tool-schemas.test.ts        # Tool schema structural validation
 ```
 
 **Key testing patterns**:
