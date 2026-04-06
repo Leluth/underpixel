@@ -51,7 +51,7 @@ describe('DEFAULT_CAPTURE_CONFIG', () => {
     expect(DEFAULT_CAPTURE_CONFIG.includeStatic).toBe(false);
     expect(DEFAULT_CAPTURE_CONFIG.screenshotsEnabled).toBe(true);
     expect(DEFAULT_CAPTURE_CONFIG.correlationWindow).toBe(500);
-    expect(DEFAULT_CAPTURE_CONFIG.pixelDiffThreshold).toBe('auto');
+    expect(DEFAULT_CAPTURE_CONFIG.pixelDiffThreshold).toBe(0.01);
     expect(DEFAULT_CAPTURE_CONFIG.maskInputs).toBe(false);
   });
 

@@ -107,9 +107,27 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
             },
           },
         },
-        screenshotsEnabled: {
-          type: 'boolean',
-          description: 'Auto-capture screenshots (default: true)',
+        screenshotConfig: {
+          type: 'object',
+          description: 'Auto-screenshot settings (overrides popup defaults for this session)',
+          properties: {
+            enabled: {
+              type: 'boolean',
+              description: 'Enable auto-screenshots (default: true)',
+            },
+            maxPerSession: {
+              type: 'number',
+              description: 'Max screenshots per session (default: 100)',
+            },
+            interval: {
+              type: 'number',
+              description: 'Min ms between screenshots (default: 500)',
+            },
+            diffThreshold: {
+              type: 'number',
+              description: 'Pixel diff ratio to trigger save, 0.0-1.0 (default: 0.01 = 1%)',
+            },
+          },
         },
         tabId: {
           type: 'number',
