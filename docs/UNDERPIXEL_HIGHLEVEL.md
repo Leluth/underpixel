@@ -201,12 +201,11 @@ Secondary differentiators:
 6. **API dependency graph** — auto-detect call chains via value propagation tracking
 7. **MCP server** — ~12 focused tools for Claude Code / any MCP client
 8. **Session export/share** — `.underpixel` files (gzipped JSON: rrweb events + network + screenshots)
-9. **API diff between sessions** — compare production vs staging API calls + visual differences
-10. **Auto-generate API documentation** — from captured sessions, generate endpoint docs with auth flow, params, response shape
-11. **Performance annotations** — slow API calls highlighted, waterfall visualization, time-to-interactive markers
-12. **AI action recording** — silently records when Claude Code drives the browser, enabling replay + audit
-13. **User controls** — popup toggle on/off, filter settings
-14. **Browser control** — navigate, click, fill, scroll (from mcp-chrome, minimal set)
+9. **Auto-generate API documentation** — from captured sessions, generate endpoint docs with auth flow, params, response shape
+10. **Performance annotations** — slow API calls highlighted, waterfall visualization, time-to-interactive markers
+11. **AI action recording** — silently records when Claude Code drives the browser, enabling replay + audit
+12. **User controls** — popup toggle on/off, filter settings
+13. **Browser control** — navigate, click, fill, scroll (from mcp-chrome, minimal set)
 
 ### Excluded from Scope
 
@@ -558,20 +557,19 @@ interface NetworkCapture {
 2. ✅ **MCP tool** — `api_dependencies()` returns typed edge list with `DependencyEdge` (`from`, `to`, `via`, `valueType`)
 3. ✅ **Session export** — `exportSession()` in `src/replay/lib/export.ts`: reads all IDB stores, re-inlines response bodies, applies `ExportOptions` (mask headers, strip bodies/screenshots), compresses via `CompressionStream('gzip')`, triggers browser download as `.underpixel` file.
 4. ✅ **Session import** — `importSession()` in `src/replay/lib/import.ts`: decompresses, validates (`validateBundle`), re-keys all session IDs to avoid collisions (`rekeyBundle`), splits large bodies back into `responseBodies` store, writes all stores in a single IDB transaction.
-5. **Export/Import UI buttons** in replay page — pending (logic is ready, UI wiring needed)
+5. ✅ **Export/Import UI** in replay page — ExportModal with options (mask headers, strip bodies/screenshots), import button with file picker, toast notifications, imported session indicators in SessionPicker.
 
-**Deliverable**: Claude Code can query API auth flows. Users can export and share sessions programmatically.
+**Deliverable**: Claude Code can query API auth flows. Users can export and share sessions.
 
 ### Phase 4: Advanced Features (~3-4 days)
 
 **Goal**: Diff, auto-docs, performance, polish.
 
-1. **API diff between sessions** — compare two .underpixel files: new/removed calls, changed response shapes, visual differences (side-by-side replay)
-2. **Auto-generate API documentation** — from captured sessions, generate endpoint docs with auth flow, params, response shape (Claude Code refines into OpenAPI spec)
-3. **Performance annotations** — overlay on replay: slow API calls highlighted red, waterfall visualization, parallel vs sequential request markers
-4. **Dependency graph UI** — visual DAG in extension page using elkjs
-5. **Filter improvements** — filter by domain, status code, resource type, URL pattern
-6. **Polish** — error handling, edge cases, loading states
+1. **Auto-generate API documentation** — from captured sessions, generate endpoint docs with auth flow, params, response shape (Claude Code refines into OpenAPI spec)
+2. **Performance annotations** — overlay on replay: slow API calls highlighted red, waterfall visualization, parallel vs sequential request markers
+3. **Dependency graph UI** — visual DAG in extension page using elkjs
+4. **Filter improvements** — filter by domain, status code, resource type, URL pattern
+5. **Polish** — error handling, edge cases, loading states
 
 ### Phase 5: Cross-Browser + Ecosystem (~ongoing)
 
