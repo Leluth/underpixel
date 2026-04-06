@@ -49,7 +49,7 @@ export interface CaptureConfig {
   screenshotsEnabled: boolean;
   maxScreenshotsPerSession: number;
   screenshotInterval: number;
-  pixelDiffThreshold: 'auto' | number;
+  pixelDiffThreshold: number;
 
   correlationWindow: number;
 
@@ -77,6 +77,9 @@ export interface CaptureSession {
     screenshotCount: number;
     correlationBundleCount: number;
   };
+  imported?: boolean;
+  importedAt?: number;
+  originalSessionId?: string;
 }
 
 export interface NetworkRequest {
@@ -145,4 +148,22 @@ export interface DependencyEdge {
   to: { url: string; method: string };
   via: string;
   valueType: 'jwt' | 'uuid' | 'token' | 'id';
+}
+
+export interface ExportOptions {
+  includeScreenshots: boolean;
+  includeResponseBodies: boolean;
+  maskSensitiveHeaders: boolean;
+  maskedHeaderNames: string[];
+}
+
+export interface UnderpixelBundle {
+  version: 1;
+  exportedAt: number;
+  exportOptions: ExportOptions;
+  session: CaptureSession;
+  networkRequests: NetworkRequest[];
+  rrwebEvents: StoredRrwebEvent[];
+  screenshots: StoredScreenshot[];
+  correlationBundles: CorrelationBundle[];
 }

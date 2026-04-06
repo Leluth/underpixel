@@ -1,8 +1,9 @@
 <script lang="ts">
   import { sessions, sessionsLoading } from '../stores/session-store';
-  import { replayStore } from '../stores/replay-store';
   import { createEventDispatcher } from 'svelte';
   import { hostnameFromUrl, formatSessionDuration } from '../lib/format';
+
+  export let selectedSessionId = '';
 
   const dispatch = createEventDispatcher<{ select: string }>();
 
@@ -28,12 +29,12 @@
   {#if $sessionsLoading}
     <span class="loading-label">Loading...</span>
   {:else}
-    <select on:change={handleChange} value={$replayStore.session?.id ?? ''}>
+    <select on:change={handleChange} value={selectedSessionId}>
       <option value="" disabled>Select session</option>
       {#each $sessions as session}
         <option value={session.id}>
-          ♦ {hostnameFromUrl(session.initialUrl)} ({formatSessionDuration(session.startTime, session.endTime)}) —
-          {formatDate(session.startTime)}
+          {session.imported ? '▸' : '♦'} {hostnameFromUrl(session.initialUrl)} ({formatSessionDuration(session.startTime, session.endTime)}) —
+          {formatDate(session.startTime)}{session.imported ? ' [Imported]' : ''}
         </option>
       {/each}
     </select>
