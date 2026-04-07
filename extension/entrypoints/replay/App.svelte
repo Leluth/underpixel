@@ -235,7 +235,7 @@
             onSeek={(t) => playerComponent?.goto(t)}
             onSpeedChange={(s) => playerComponent?.setSpeed(s)}
             onEventSelect={(id, ts) => {
-              const offset = ts - ($replayStore.session?.startTime ?? 0) - 200;
+              const offset = ts - ($replayStore.session?.startTime ?? 0);
               playerComponent?.goto(Math.max(0, offset));
             }}
           />
