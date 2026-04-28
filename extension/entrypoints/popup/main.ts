@@ -8,8 +8,35 @@ const setupSection = document.getElementById('setup-section')!;
 const dataSection = document.getElementById('data-section')!;
 const mcpCmd = document.getElementById('mcp-cmd')!;
 const mcpJson = document.getElementById('mcp-json')!;
+const screenshotSection = document.getElementById('screenshot-section')!;
+const screenshotsEnabledEl = document.getElementById('screenshots-enabled')! as HTMLInputElement;
+const maxScreenshotsEl = document.getElementById('max-screenshots')! as HTMLInputElement;
+const screenshotIntervalEl = document.getElementById('screenshot-interval')! as HTMLInputElement;
+const diffThresholdEl = document.getElementById('diff-threshold')! as HTMLInputElement;
 
 let capturing = false;
+
+async function loadScreenshotSettings() {
+  const stored = await chrome.storage.local.get([
+    'screenshotsEnabled',
+    'maxScreenshotsPerSession',
+    'screenshotInterval',
+    'pixelDiffThreshold',
+  ]);
+  screenshotsEnabledEl.checked = stored.screenshotsEnabled ?? true;
+  maxScreenshotsEl.value = String(stored.maxScreenshotsPerSession ?? 100);
+  screenshotIntervalEl.value = String(stored.screenshotInterval ?? 500);
+  diffThresholdEl.value = String((stored.pixelDiffThreshold ?? 0.01) * 100);
+}
+
+function saveScreenshotSettings() {
+  chrome.storage.local.set({
+    screenshotsEnabled: screenshotsEnabledEl.checked,
+    maxScreenshotsPerSession: parseInt(maxScreenshotsEl.value, 10) || 100,
+    screenshotInterval: parseInt(screenshotIntervalEl.value, 10) || 500,
+    pixelDiffThreshold: (parseFloat(diffThresholdEl.value) || 1) / 100,
+  });
+}
 
 async function updateState() {
   const state = await chrome.storage.local.get(['connected', 'serverPort', 'captureActive']);
@@ -21,6 +48,7 @@ async function updateState() {
 
     // Show connected sections
     captureSection.classList.remove('hidden');
+    screenshotSection.classList.remove('hidden');
     setupSection.classList.remove('hidden');
     dataSection.classList.remove('hidden');
 
@@ -43,6 +71,7 @@ async function updateState() {
       '<span style="color:#a0aec0">Run: <b>npm install -g underpixel-bridge</b></span>';
 
     captureSection.classList.add('hidden');
+    screenshotSection.classList.add('hidden');
     setupSection.classList.add('hidden');
     dataSection.classList.add('hidden');
   }
@@ -58,6 +87,12 @@ async function updateState() {
     captureBtn.classList.remove('capturing');
     captureStats.classList.add('hidden');
   }
+
+  // Disable screenshot settings while capturing
+  screenshotsEnabledEl.disabled = capturing;
+  maxScreenshotsEl.disabled = capturing;
+  screenshotIntervalEl.disabled = capturing;
+  diffThresholdEl.disabled = capturing;
 
   // Show replay button if there are sessions
   chrome.runtime.sendMessage(
@@ -140,6 +175,12 @@ clearBtn.addEventListener('click', async () => {
   }
 });
 
+// Screenshot settings event listeners
+screenshotsEnabledEl.addEventListener('change', saveScreenshotSettings);
+maxScreenshotsEl.addEventListener('change', saveScreenshotSettings);
+screenshotIntervalEl.addEventListener('change', saveScreenshotSettings);
+diffThresholdEl.addEventListener('change', saveScreenshotSettings);
+
 // Watch for changes
 chrome.storage.onChanged.addListener((changes) => {
   if (changes.connected || changes.serverPort || changes.captureActive) {
@@ -147,4 +188,5 @@ chrome.storage.onChanged.addListener((changes) => {
   }
 });
 
+loadScreenshotSettings();
 updateState();

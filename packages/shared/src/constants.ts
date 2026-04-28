@@ -49,7 +49,7 @@ export const DEFAULT_CAPTURE_CONFIG = {
   screenshotsEnabled: true,
   maxScreenshotsPerSession: 100,
   screenshotInterval: 500,
-  pixelDiffThreshold: 'auto' as const,
+  pixelDiffThreshold: 0.01,
 
   correlationWindow: 500,
 

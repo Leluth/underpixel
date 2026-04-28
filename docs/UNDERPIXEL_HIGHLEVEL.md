@@ -153,11 +153,12 @@ Secondary differentiators:
 +----------------------------------------------------------+
 ```
 
-**Key architectural decision**: All logic lives in the Chrome extension. The bridge is a dumb pipe. This means:
+**Key architectural decisions**:
 
-- Updating the extension (via Web Store auto-update) updates the logic
-- The npm bridge package rarely needs updating
-- The extension holds all state — no syncing issues
+- All logic lives in the Chrome extension. The bridge is a dumb pipe — it proxies MCP tool calls to the extension via Native Messaging and returns results.
+- Updating the extension (via Web Store auto-update) updates the logic; the npm bridge package rarely needs updating.
+- The extension holds all state (IndexedDB + chrome.storage.local) — no syncing issues.
+- Per-session MCP transports: each MCP client gets its own `StreamableHTTPServerTransport` + `McpServer` instance, matching the official SDK pattern.
 
 ## Key Dependencies
 
@@ -200,12 +201,11 @@ Secondary differentiators:
 6. **API dependency graph** — auto-detect call chains via value propagation tracking
 7. **MCP server** — ~12 focused tools for Claude Code / any MCP client
 8. **Session export/share** — `.underpixel` files (gzipped JSON: rrweb events + network + screenshots)
-9. **API diff between sessions** — compare production vs staging API calls + visual differences
-10. **Auto-generate API documentation** — from captured sessions, generate endpoint docs with auth flow, params, response shape
-11. **Performance annotations** — slow API calls highlighted, waterfall visualization, time-to-interactive markers
-12. **AI action recording** — silently records when Claude Code drives the browser, enabling replay + audit
-13. **User controls** — popup toggle on/off, filter settings
-14. **Browser control** — navigate, click, fill, scroll (from mcp-chrome, minimal set)
+9. **Auto-generate API documentation** — from captured sessions, generate endpoint docs with auth flow, params, response shape
+10. **Performance annotations** — slow API calls highlighted, waterfall visualization, time-to-interactive markers
+11. **AI action recording** — silently records when Claude Code drives the browser, enabling replay + audit
+12. **User controls** — popup toggle on/off, filter settings
+13. **Browser control** — navigate, click, fill, scroll (from mcp-chrome, minimal set)
 
 ### Excluded from Scope
 
@@ -272,14 +272,14 @@ captureVisibleTab
 
 #### Screenshot Limits (configurable)
 
-| Setting                    | Default  | Description                                                                                                                                                                                                                                                                     |
-| -------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `maxScreenshotsPerSession` | 100      | Hard cap per capture session (per capture start/stop cycle). Prevents runaway storage on long-lived pages. When reached, only on-demand screenshots via MCP tool are allowed.                                                                                                   |
-| `screenshotInterval`       | 500ms    | Minimum time between screenshots (debounce). Cannot exceed Chrome's 2/sec hard limit regardless.                                                                                                                                                                                |
-| `pixelDiffThreshold`       | `"auto"` | `"auto"` (default): skip pixel diff entirely — if Layer 1 says DOM changed and page is stable, save the screenshot. This is simpler and sufficient in most cases. Set to a number (e.g., `0.01` = 1%) to enable pixelmatch comparison and only save when enough pixels changed. |
-| `screenshotsEnabled`       | true     | Master toggle. User can disable auto-screenshots entirely and rely only on on-demand capture via MCP tool or rrweb DOM replay.                                                                                                                                                  |
+| Setting                    | Default     | Description                                                                                                                                                                                |
+| -------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `maxScreenshotsPerSession` | 100         | Hard cap per capture session (per capture start/stop cycle). Prevents runaway storage on long-lived pages. When reached, only on-demand screenshots via MCP tool are allowed.              |
+| `screenshotInterval`       | 500ms       | Minimum time between screenshots (debounce). Cannot exceed Chrome's 2/sec hard limit regardless.                                                                                           |
+| `pixelDiffThreshold`       | `0.01` (1%) | Pixel diff ratio threshold for pixelmatch comparison. Screenshots are only saved when the changed pixel ratio exceeds this value. Set to `0` to save every screenshot that passes Layer 1. |
+| `screenshotsEnabled`       | true        | Master toggle. User can disable auto-screenshots entirely and rely only on on-demand capture via MCP tool or rrweb DOM replay.                                                             |
 
-**Note on defaults**: These are starting guesses — tune based on real-world testing across different site types (dashboards, SPAs, form-heavy apps, content pages). The important thing is that they're configurable. In `"auto"` mode, Layer 2 (pixelmatch) is skipped entirely, making it effectively a 1-layer system where rrweb + stability gate is the only decision point.
+**Note on defaults**: These are starting guesses — tune based on real-world testing across different site types (dashboards, SPAs, form-heavy apps, content pages). The important thing is that they're configurable.
 
 Note: On-demand screenshots via the `underpixel_screenshot()` MCP tool always work regardless of these limits — these settings only control the automatic smart capture.
 
@@ -351,11 +351,11 @@ For the extension UI, use [elkjs](https://github.com/kieler/elkjs) to compute la
 
 ### Core (the differentiator)
 
-| Tool                                | Description                                                                        |
-| ----------------------------------- | ---------------------------------------------------------------------------------- |
-| `underpixel_correlate(query)`       | "What API feeds the user table?" — cross-references DOM content with API responses |
-| `underpixel_timeline(timeRange?)`   | Returns snapshot bundles with correlated API + visual state                        |
-| `underpixel_snapshot_at(timestamp)` | Screenshot + DOM state + API calls at a specific moment                            |
+| Tool                                                | Description                                                                                                                                                                                                                                                                                                         |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `underpixel_correlate(query)`                       | "What API feeds the user table?" — forward path (text search on URLs + response bodies), reverse path (DOM element → correlated APIs via rrweb snapshots), and value-level correlation (DOM text values → specific JSON response fields). Supports CSS selectors, attribute queries (`[src="..."]`), and free text. |
+| `underpixel_timeline(startTime?, endTime?, limit?)` | Returns chronological correlation bundles with API + visual state                                                                                                                                                                                                                                                   |
+| `underpixel_snapshot_at(timestamp)`                 | Closest screenshot + active API calls at a specific moment                                                                                                                                                                                                                                                          |
 
 ### Network
 
@@ -376,39 +376,40 @@ For the extension UI, use [elkjs](https://github.com/kieler/elkjs) to compute la
 
 ### Browser Control (minimal, from mcp-chrome)
 
-| Tool                          | Description                            |
-| ----------------------------- | -------------------------------------- |
-| `underpixel_navigate(url)`    | Go to page                             |
-| `underpixel_interact(action)` | Click, fill, scroll                    |
-| `underpixel_page_read()`      | Accessibility tree of visible elements |
+| Tool                            | Description                                                                 |
+| ------------------------------- | --------------------------------------------------------------------------- |
+| `underpixel_navigate(url)`      | Go to page (new tab or update existing)                                     |
+| `underpixel_interact(action)`   | Click, fill, scroll, type, press key                                        |
+| `underpixel_page_read(filter?)` | Accessibility tree of visible elements (filter: `'all'` or `'interactive'`) |
 
 ## Extension UI
 
-The Chrome extension opens a full tab (`chrome.runtime.getURL("replay.html")`) for the replay interface:
+The Chrome extension opens a full tab (`chrome-extension://EXTENSION_ID/replay.html`) for the replay interface. Built with **Svelte 5** (legacy/Svelte 4 syntax) and a "Cozy Pixel RPG" theme.
 
 ```
 +------------------------------+-------------------------+
-|                              | > GET /api/okrs    1.2s |
-|   rrweb-player               |   200 - 3 items         |
-|   (interactive replay)       |                         |
-|                              | > GET /api/user    0.3s |
-|  [click element in replay    |   200 - profile data    |
-|   -> highlights which API]   |                         |
-|                              | > POST /api/log    0.1s |
-|                              |   204 - no content      |
-+------------------------------+                         |
-| <<  >  >>  1x  ===*======   | [filter] [export]       |
+|                              | ▼ Page Load             |
+|   rrweb-player               |   GET /api/config  0.1s |
+|   (interactive replay)       |   GET /api/user    0.3s |
+|                              |                         |
+|  [synced playback with       | ▼ User Clicked "OKRs"  |
+|   event-based timeline]      |   GET /api/okrs    1.2s |
+|                              |   200 - 3 items         |
+|                              |                         |
++------------------------------+ ▼ Form Submit           |
+| <<  >  >>  1x  ===*======   |   POST /api/log    0.1s |
 +------------------------------+-------------------------+
 ```
 
 Features:
 
 - Left pane: rrweb-player with play/pause/seek controls
-- Right pane: API call timeline, synced by timestamp
-- Click an API call -> replay seeks to that moment
-- Click UI element in replay -> highlights which API call fed it
-- Export button -> saves .underpixel file
-- API dependency graph view (v2, using elkjs)
+- Right pane: **Event-based** API timeline — calls grouped by UI events (`EventSection`), not flat list
+- Svelte store (`replay-store.ts`) syncs player currentTime with timeline highlighting
+- Search/filter across API calls
+- Detail panel for inspecting request/response headers and bodies
+- Export button (planned — .underpixel file)
+- API dependency graph view (planned, using elkjs)
 
 ## Installation UX
 
@@ -535,45 +536,40 @@ interface NetworkCapture {
 
 **Deliverable**: User can tell Claude Code "go to X page, capture network, tell me what API feeds the user list" and get a correlated answer.
 
-### Phase 2: Smart Capture + Replay UI — PARTIAL
+### Phase 2: Smart Capture + Replay UI ✅ COMPLETE
 
 **Goal**: Visual change detection + replay interface.
 
-1. **2-layer screenshot gate** — rrweb events + PerformanceObserver + stability wait, then pixelmatch for pixel diff confirmation
-2. **Offscreen document** — canvas-based image processing for hash/diff
-3. ✅ **Replay page** — `replay.html` with rrweb-player (Svelte 5) left pane + API timeline right pane, "Cozy Pixel RPG" theme
-4. ✅ **Timeline sync** — click API call -> seek replay, play replay -> highlight current API calls, bidirectional
-5. ✅ **MCP tools** — `timeline`, `snapshot_at`, `replay` (with timestamp param), `dom_text` all implemented in Phase 1
-6. ✅ **Detail panel** — slide-out panel with Headers/Request/Response/Timing/Correlation tabs
-7. ✅ **Search & filter** — full-text search + method/status filter chips
-8. ✅ **Capture survives navigation** — debugger re-attach + rrweb restart via `chrome.tabs.onUpdated`
+1. ✅ **2-layer screenshot gate** — `ScreenshotGate` (dirty flag + debounce + limits) feeds `ScreenshotPipeline` (capture + pixelmatch diff via offscreen document). Navigation bypasses diff. Configurable interval, max count, and pixel diff threshold (default 0.01 = 1%).
+2. ✅ **Offscreen document** — canvas-based pixelmatch via message protocol (`{ type: 'pixel-diff', previous, current }` → `{ diffRatio }`)
+3. ✅ **Replay page** — `replay.html` with rrweb-player left pane + API timeline right pane, built with **Svelte 5** (legacy/Svelte 4 syntax). Cozy Pixel RPG theme.
+4. ✅ **Event-based timeline redesign** — API calls grouped by UI events (`EventSection`), not flat list. Svelte store (`replay-store.ts`) syncs player time with timeline.
+5. ✅ **MCP tools** — `timeline`, `snapshot_at`, `replay` all implemented
+6. ✅ **DOM text tool** — `underpixel_dom_text(selector)` uses TreeWalker for safe text extraction (avoids serialization risk)
 
-**Remaining**: Items 1-2 (smart screenshot gate + offscreen document) still pending.
+**Deliverable**: User can replay browser sessions with synchronized event-based API timeline. Smart screenshots captured automatically on significant visual changes.
 
-**Deliverable**: User can replay browser sessions with synchronized API timeline. Smart screenshots captured automatically on significant visual changes.
-
-### Phase 3: Dependency Graph + Export (~2-3 days)
+### Phase 3: Dependency Graph + Export ✅ COMPLETE
 
 **Goal**: API chain detection + session sharing.
 
-1. **Value propagation algorithm** — extract trackable values from responses, match in subsequent requests
-2. **MCP tool** — `api_dependencies()` returns edge list
-3. **Session export** — `.underpixel` file format (gzipped JSON bundle)
-4. **Session import** — open .underpixel file in replay UI without needing original site
-5. **Export button** in replay UI
+1. ✅ **Value propagation algorithm** — extracts JWTs, UUIDs, hex tokens, high-entropy strings, numeric IDs from responses; searches in subsequent request URLs, auth headers, and bodies. Implemented in `tools/core.ts` + `json-utils.ts`.
+2. ✅ **MCP tool** — `api_dependencies()` returns typed edge list with `DependencyEdge` (`from`, `to`, `via`, `valueType`)
+3. ✅ **Session export** — `exportSession()` in `src/replay/lib/export.ts`: reads all IDB stores, re-inlines response bodies, applies `ExportOptions` (mask headers, strip bodies/screenshots), compresses via `CompressionStream('gzip')`, triggers browser download as `.underpixel` file.
+4. ✅ **Session import** — `importSession()` in `src/replay/lib/import.ts`: decompresses, validates (`validateBundle`), re-keys all session IDs to avoid collisions (`rekeyBundle`), splits large bodies back into `responseBodies` store, writes all stores in a single IDB transaction.
+5. ✅ **Export/Import UI** in replay page — ExportModal with options (mask headers, strip bodies/screenshots), import button with file picker, toast notifications, imported session indicators in SessionPicker.
 
-**Deliverable**: Claude Code can query API auth flows. Users can export and share sessions with teammates.
+**Deliverable**: Claude Code can query API auth flows. Users can export and share sessions.
 
 ### Phase 4: Advanced Features (~3-4 days)
 
 **Goal**: Diff, auto-docs, performance, polish.
 
-1. **API diff between sessions** — compare two .underpixel files: new/removed calls, changed response shapes, visual differences (side-by-side replay)
-2. **Auto-generate API documentation** — from captured sessions, generate endpoint docs with auth flow, params, response shape (Claude Code refines into OpenAPI spec)
-3. **Performance annotations** — overlay on replay: slow API calls highlighted red, waterfall visualization, parallel vs sequential request markers
-4. **Dependency graph UI** — visual DAG in extension page using elkjs
-5. **Filter improvements** — filter by domain, status code, resource type, URL pattern
-6. **Polish** — error handling, edge cases, loading states
+1. **Auto-generate API documentation** — from captured sessions, generate endpoint docs with auth flow, params, response shape (Claude Code refines into OpenAPI spec)
+2. **Performance annotations** — overlay on replay: slow API calls highlighted red, waterfall visualization, parallel vs sequential request markers
+3. **Dependency graph UI** — visual DAG in extension page using elkjs
+4. **Filter improvements** — filter by domain, status code, resource type, URL pattern
+5. **Polish** — error handling, edge cases, loading states
 
 ### Phase 5: Cross-Browser + Ecosystem (~ongoing)
 
@@ -590,29 +586,60 @@ interface NetworkCapture {
 - **Description**: Chrome extension + MCP server — record, replay, and understand what's behind the pixels. Timestamped visual-API correlation for Claude Code and any MCP client.
 - **Topics**: `chrome-extension`, `claude-code`, `mcp`, `mcp-server`, `devtools`, `network-debugging`, `api-monitoring`, `rrweb`, `browser-automation`, `developer-tools`
 
-### Repo Structure (suggested)
+### Repo Structure (actual)
 
 ```
 underpixel/
-+-- extension/               # Chrome extension
-|   +-- manifest.json        # Manifest V3
-|   +-- src/
-|   |   +-- content/         # Content scripts (rrweb recording, PerformanceObserver)
-|   |   +-- background/      # Service worker (debugger API, correlation engine, screenshot gate)
-|   |   +-- offscreen/       # Offscreen document (canvas image processing)
-|   |   +-- popup/           # Extension popup (toggle, settings)
-|   |   +-- replay/          # Replay page (rrweb-player + API timeline)
-|   |   +-- shared/          # Shared types, constants, utils
-|   +-- assets/              # Icons, pixel art
-|   +-- build/               # Build config
-+-- bridge/                  # NPM package (underpixel-bridge)
-|   +-- src/
-|   |   +-- index.ts         # stdio <-> Native Messaging translator
-|   |   +-- register.ts      # Auto-register as Native Messaging host
-|   +-- package.json
-+-- docs/                    # Documentation
-+-- README.md
-+-- LICENSE                  # MIT
+├── extension/                   # Chrome extension (WXT project)
+│   ├── wxt.config.ts            # WXT + Vite config, manifest generation
+│   ├── entrypoints/
+│   │   ├── background.ts             # Service worker (orchestrator)
+│   │   ├── content.ts                # ISOLATED world content script (bridge)
+│   │   ├── content-recorder.ts       # MAIN world content script (rrweb)
+│   │   ├── popup/                    # Extension popup (toggle, settings, MCP config)
+│   │   ├── replay/                   # Replay page (Svelte 5, rrweb-player + API timeline)
+│   │   └── offscreen/               # Canvas-based image processing (pixelmatch)
+│   ├── lib/
+│   │   ├── network/
+│   │   │   ├── capture.ts            # CDP network capture (chrome.debugger)
+│   │   │   └── cdp-session.ts        # Ref-counted debugger attach/detach
+│   │   ├── correlation/
+│   │   │   ├── engine.ts             # Timestamp-based correlation bundles
+│   │   │   └── dom-walker.ts         # rrweb snapshot DOM searching
+│   │   ├── screenshot/
+│   │   │   ├── gate.ts               # 2-layer screenshot decision logic
+│   │   │   └── pipeline.ts           # Capture + pixelmatch diff pipeline
+│   │   ├── recording/
+│   │   │   └── event-batcher.ts      # Batched rrweb event persistence (200ms)
+│   │   ├── storage/
+│   │   │   └── db.ts                 # IndexedDB schema + helpers (via idb)
+│   │   └── tools/
+│   │       ├── registry.ts           # Tool name -> handler mapping
+│   │       ├── core.ts               # correlate, timeline, snapshot_at, replay, api_dependencies
+│   │       ├── network.ts            # capture_start/stop, api_calls
+│   │       └── browser.ts            # navigate, interact, page_read, screenshot, dom_text
+│   └── src/replay/                   # Svelte components for replay UI
+│       ├── stores/replay-store.ts    # Svelte store (syncs player + timeline)
+│       └── lib/                      # Helpers (event-sections, export, format, search, etc.)
+├── bridge/                      # NPM package: underpixel-bridge
+│   ├── src/
+│   │   ├── cli.ts               # Entry point (Native Messaging + auto-start)
+│   │   ├── native-host.ts       # Length-prefixed JSON stdio protocol
+│   │   └── server.ts            # Fastify HTTP server (MCP routes, per-session transports)
+│   └── scripts/
+│       ├── register.ts          # Write NativeMessagingHosts manifest
+│       ├── postinstall.ts       # npm postinstall auto-registration
+│       ├── run_host.sh          # Unix wrapper (Node.js discovery)
+│       └── run_host.bat         # Windows wrapper
+├── packages/
+│   └── shared/                  # Shared types between extension + bridge
+│       └── src/
+│           ├── types.ts         # All data types, enums, interfaces
+│           ├── tool-schemas.ts  # MCP tool definitions (JSON Schema)
+│           └── constants.ts     # Host name, default port, config defaults
+├── docs/                        # Design docs + per-feature specs/plans
+├── CLAUDE.md
+└── LICENSE                      # MIT
 ```
 
 ### README Structure

@@ -223,3 +223,37 @@ section {
   font-size: 12px;
   line-height: 1.8;
 }
+
+/* ---- Screenshot Settings ---- */
+
+.settings-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.settings-card h3 {
+  font-size: 13px;
+  font-weight: 600;
+  color: #2d3748;
+  margin-bottom: 8px;
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 0;
+  font-size: 12px;
+  color: #4a5568;
+}
+
+.setting-input {
+  width: 70px;
+  padding: 3px 6px;
+  border: 1px solid #cbd5e0;
+  border-radius: 4px;
+  font-size: 12px;
+  text-align: right;
+}

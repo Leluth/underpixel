@@ -28,6 +28,28 @@
         <button id="replay-btn" class="btn btn-replay hidden">View Replay</button>
       </section>
 
+      <section id="screenshot-section" class="hidden">
+        <div class="settings-card">
+          <h3>Screenshot Settings</h3>
+          <label class="setting-row">
+            <span>Auto-screenshots</span>
+            <input type="checkbox" id="screenshots-enabled" checked />
+          </label>
+          <label class="setting-row">
+            <span>Max per session</span>
+            <input type="number" id="max-screenshots" value="100" min="1" max="1000" class="setting-input" />
+          </label>
+          <label class="setting-row">
+            <span>Min interval (ms)</span>
+            <input type="number" id="screenshot-interval" value="500" min="100" max="5000" step="100" class="setting-input" />
+          </label>
+          <label class="setting-row">
+            <span>Diff threshold (%)</span>
+            <input type="number" id="diff-threshold" value="1" min="0.1" max="50" step="0.1" class="setting-input" />
+          </label>
+        </div>
+      </section>
+
       <!-- Setup instructions, shown when connected -->
       <section id="setup-section" class="hidden">
         <div class="setup-card">

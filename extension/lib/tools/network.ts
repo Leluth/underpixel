@@ -10,12 +10,24 @@ import { startCapture, stopCapture } from '../network/capture';
 import { correlationEngine } from '../correlation/engine';
 import { db, getLatestSession } from '../storage/db';
 import { flushPendingEvents, clearSessionBuffer } from '../recording/event-batcher';
+import { ScreenshotGate } from '../screenshot/gate';
+import { ScreenshotPipeline } from '../screenshot/pipeline';
+
+let activeGate: ScreenshotGate | null = null;
+let activePipeline: ScreenshotPipeline | null = null;
 
 // ---- capture_start ----
 
 toolRegistry.register(TOOL_NAMES.CAPTURE_START, async (args) => {
   const filter = (args.filter as Partial<CaptureConfig>) || {};
-  const screenshotsEnabled = (args.screenshotsEnabled as boolean) ?? true;
+  const screenshotConfig = args.screenshotConfig as
+    | {
+        enabled?: boolean;
+        maxPerSession?: number;
+        interval?: number;
+        diffThreshold?: number;
+      }
+    | undefined;
 
   // Resolve target tab
   let tabId = resolveTabId(args.tabId);
@@ -28,11 +40,34 @@ toolRegistry.register(TOOL_NAMES.CAPTURE_START, async (args) => {
     throw new Error(`Cannot capture on ${tab.url} — navigate to a regular webpage first`);
   }
 
-  // Build config
+  // Read popup defaults from chrome.storage.local
+  const stored = await chrome.storage.local.get([
+    'screenshotsEnabled',
+    'maxScreenshotsPerSession',
+    'screenshotInterval',
+    'pixelDiffThreshold',
+  ]);
+
+  // Build config: defaults ← popup settings ← MCP tool overrides
   const config: CaptureConfig = {
     ...DEFAULT_CAPTURE_CONFIG,
     ...filter,
-    screenshotsEnabled,
+    screenshotsEnabled:
+      screenshotConfig?.enabled ??
+      stored.screenshotsEnabled ??
+      DEFAULT_CAPTURE_CONFIG.screenshotsEnabled,
+    maxScreenshotsPerSession:
+      screenshotConfig?.maxPerSession ??
+      stored.maxScreenshotsPerSession ??
+      DEFAULT_CAPTURE_CONFIG.maxScreenshotsPerSession,
+    screenshotInterval:
+      screenshotConfig?.interval ??
+      stored.screenshotInterval ??
+      DEFAULT_CAPTURE_CONFIG.screenshotInterval,
+    pixelDiffThreshold:
+      screenshotConfig?.diffThreshold ??
+      stored.pixelDiffThreshold ??
+      DEFAULT_CAPTURE_CONFIG.pixelDiffThreshold,
   } as CaptureConfig;
 
   // Create session
@@ -80,6 +115,55 @@ toolRegistry.register(TOOL_NAMES.CAPTURE_START, async (args) => {
     // Content script may not be injected yet — acceptable for network-only capture
   }
 
+  // Start screenshot gate + pipeline if enabled
+  if (config.screenshotsEnabled) {
+    // Ensure offscreen document exists
+    try {
+      const hasDoc = await chrome.offscreen.hasDocument();
+      if (!hasDoc) {
+        await chrome.offscreen.createDocument({
+          url: 'offscreen/index.html',
+          reasons: [chrome.offscreen.Reason.CANVAS],
+          justification: 'Screenshot pixel comparison via pixelmatch',
+        });
+      }
+    } catch (err) {
+      console.warn('[UnderPixel] Failed to create offscreen document:', err);
+    }
+
+    activePipeline = new ScreenshotPipeline({
+      captureVisibleTab: async (tid: number) => {
+        const t = await chrome.tabs.get(tid);
+        return chrome.tabs.captureVisibleTab(t.windowId!, {
+          format: 'jpeg',
+          quality: 50,
+        });
+      },
+      sendMessageToOffscreen: (msg) => chrome.runtime.sendMessage(msg),
+      storeScreenshot: async (screenshot) => {
+        const database = await db();
+        await database.put('screenshots', screenshot);
+      },
+      pixelDiffThreshold: config.pixelDiffThreshold,
+    });
+
+    const handleCapture = async (capture: () => Promise<{ stored: boolean }>) => {
+      if (!activePipeline) return;
+      const result = await capture();
+      if (result.stored) {
+        activeGate?.recordScreenshot();
+      }
+    };
+
+    activeGate = new ScreenshotGate({
+      screenshotInterval: config.screenshotInterval,
+      maxScreenshotsPerSession: config.maxScreenshotsPerSession,
+      onReady: () => handleCapture(() => activePipeline!.captureAndCompare(tabId, session.id)),
+      onNavigation: () => handleCapture(() => activePipeline!.captureNavigation(tabId, session.id)),
+    });
+    activeGate.start();
+  }
+
   return {
     summary: `Capture started on "${tab.title}" (tab ${tabId})`,
     sessionId: session.id,
@@ -88,6 +172,7 @@ toolRegistry.register(TOOL_NAMES.CAPTURE_START, async (args) => {
     config: {
       includeStatic: config.includeStatic,
       screenshotsEnabled: config.screenshotsEnabled,
+      pixelDiffThreshold: config.pixelDiffThreshold,
       correlationWindow: config.correlationWindow,
     },
   };
@@ -132,6 +217,29 @@ toolRegistry.register(TOOL_NAMES.CAPTURE_STOP, async (args) => {
   // Flush any buffered rrweb events before closing the session
   await flushPendingEvents();
 
+  // Read screenshot count before cleanup
+  const screenshotCount = activeGate?.getScreenshotCount() ?? 0;
+
+  // Stop screenshot gate
+  if (activeGate) {
+    activeGate.stop();
+    activeGate = null;
+  }
+  if (activePipeline) {
+    activePipeline.reset();
+    activePipeline = null;
+  }
+
+  // Close offscreen document
+  try {
+    const hasDoc = await chrome.offscreen.hasDocument();
+    if (hasDoc) {
+      await chrome.offscreen.closeDocument();
+    }
+  } catch {
+    // May already be closed
+  }
+
   // Collect in-memory stats before clearing engine state
   const bundleCount = correlationEngine.getBundleCount(sessionId);
 
@@ -142,6 +250,7 @@ toolRegistry.register(TOOL_NAMES.CAPTURE_STOP, async (args) => {
     session.endTime = Date.now();
     session.stats.networkRequestCount = networkRequestCount;
     session.stats.correlationBundleCount = bundleCount;
+    session.stats.screenshotCount = screenshotCount;
     await database.put('sessions', session);
   }
 
@@ -244,3 +353,7 @@ toolRegistry.register(TOOL_NAMES.API_CALLS, async (args) => {
     calls,
   };
 });
+
+export function getActiveGate(): ScreenshotGate | null {
+  return activeGate;
+}

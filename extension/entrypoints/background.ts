@@ -2,6 +2,7 @@
 import { isCapturing, getSessionId } from '../lib/network/capture';
 import { db } from '../lib/storage/db';
 import { enqueueRrwebEvent } from '../lib/recording/event-batcher';
+import { getActiveGate } from '../lib/tools/network';
 
 export default defineBackground(() => {
   console.log('[UnderPixel] Background service worker started');
@@ -76,11 +77,14 @@ export default defineBackground(() => {
     } catch (err) {
       console.warn(`[UnderPixel] Failed to restart rrweb after navigation:`, err);
     }
+
+    // Notify screenshot gate of navigation
+    getActiveGate()?.onNavigation();
   });
 
   // Handle messages from content scripts and popup
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.type === 'rrweb' || message.type === 'layout-shift') {
+    if (message.type === 'rrweb') {
       handleContentMessage(message, sender);
       sendResponse({ ok: true });
       return false;
@@ -220,5 +224,6 @@ async function handleContentMessage(
 
     // Batched write: accumulates for 200ms, then bulk-puts to IndexedDB
     enqueueRrwebEvent(sessionId, stored);
+    getActiveGate()?.onEvent();
   }
 }

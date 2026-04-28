@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import type { eventWithTime } from '@rrweb/types';
   import {
     replayStore,
@@ -21,12 +21,84 @@
   import Timeline from '../../src/replay/components/Timeline.svelte';
   import Scrubber from '../../src/replay/components/Scrubber.svelte';
   import DetailPanel from '../../src/replay/components/DetailPanel.svelte';
+  import ExportModal from '../../src/replay/components/ExportModal.svelte';
+  import { exportSession } from '../../src/replay/lib/export';
+  import { importSession } from '../../src/replay/lib/import';
+  import type { ExportOptions } from 'underpixel-shared';
 
   let loading = true;
   let error = '';
   let rrwebEvents: eventWithTime[] = [];
   let playerComponent: Player;
   let totalDuration = 0;
+
+  $: selectedSessionId = $replayStore.session?.id ?? '';
+
+  let showExportModal = false;
+  let exporting = false;
+  let toastMessage = '';
+  let toastType: 'error' | 'success' = 'error';
+  let toastTimeout: ReturnType<typeof setTimeout>;
+
+  function showToast(message: string, type: 'error' | 'success' = 'error') {
+    toastMessage = message;
+    toastType = type;
+    clearTimeout(toastTimeout);
+    toastTimeout = setTimeout(() => {
+      toastMessage = '';
+    }, 5000);
+  }
+
+  function handleExportClick() {
+    if ($replayStore.session) {
+      showExportModal = true;
+    }
+  }
+
+  async function handleExportConfirm(e: CustomEvent<ExportOptions>) {
+    showExportModal = false;
+    const session = $replayStore.session;
+    if (!session) return;
+
+    exporting = true;
+    try {
+      await exportSession(session.id, e.detail);
+      showToast('Session exported', 'success');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Export failed');
+    } finally {
+      exporting = false;
+    }
+  }
+
+  async function handleImportClick() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.underpixel';
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+
+      try {
+        const newSessionId = await importSession(file);
+        await loadSessions();
+        await loadSession(newSessionId);
+        setSessionInUrl(newSessionId);
+        showToast('Session imported', 'success');
+      } catch (err) {
+        showToast(err instanceof Error ? err.message : 'Import failed');
+      }
+    };
+    input.click();
+  }
+
+  function setSessionInUrl(sessionId: string) {
+    const url = new URL(window.location.href);
+    url.searchParams.set('sessionId', sessionId);
+    history.replaceState(null, '', url.toString());
+  }
+
+  onDestroy(() => clearTimeout(toastTimeout));
 
   async function loadSession(sessionId: string) {
     loading = true;
@@ -102,9 +174,7 @@
 
   function handleSessionSelect(e: CustomEvent<string>) {
     loadSession(e.detail);
-    const url = new URL(window.location.href);
-    url.searchParams.set('sessionId', e.detail);
-    history.replaceState(null, '', url.toString());
+    setSessionInUrl(e.detail);
   }
 </script>
 
@@ -120,9 +190,29 @@
   {:else}
     <header class="top-bar">
       <span class="logo">UNDERPIXEL</span>
-      <SessionPicker on:select={handleSessionSelect} />
-      <button class="export-btn">Export</button>
+      <SessionPicker {selectedSessionId} on:select={handleSessionSelect} />
+      <div class="header-actions">
+        <button class="import-btn" on:click={handleImportClick}>Import</button>
+        <button
+          class="export-btn"
+          on:click={handleExportClick}
+          disabled={!selectedSessionId || exporting}
+        >
+          {exporting ? 'Exporting...' : 'Export'}
+        </button>
+      </div>
     </header>
+
+    {#if showExportModal}
+      <ExportModal
+        on:confirm={handleExportConfirm}
+        on:cancel={() => (showExportModal = false)}
+      />
+    {/if}
+
+    {#if toastMessage}
+      <div class="toast toast-{toastType}">{toastMessage}</div>
+    {/if}
 
     {#if $replayStore.session}
       <main class="main-content">
@@ -145,7 +235,7 @@
             onSeek={(t) => playerComponent?.goto(t)}
             onSpeedChange={(s) => playerComponent?.setSpeed(s)}
             onEventSelect={(id, ts) => {
-              const offset = ts - ($replayStore.session?.startTime ?? 0) - 200;
+              const offset = ts - ($replayStore.session?.startTime ?? 0);
               playerComponent?.goto(Math.max(0, offset));
             }}
           />
@@ -228,6 +318,56 @@
   .export-btn {
     color: var(--accent);
     border-color: var(--accent);
+  }
+
+  .header-actions {
+    display: flex;
+    gap: 6px;
+  }
+
+  .import-btn {
+    color: var(--text-secondary);
+  }
+
+  .export-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: var(--font-ui);
+    font-size: 10px;
+    padding: 8px 16px;
+    border: var(--border-width) solid var(--border);
+    z-index: 2000;
+    animation: toast-in 0.2s ease-out;
+  }
+
+  .toast-error {
+    background: #3a1520;
+    color: var(--error);
+    border-color: var(--error);
+  }
+
+  .toast-success {
+    background: #152a15;
+    color: var(--success);
+    border-color: var(--success);
+  }
+
+  @keyframes toast-in {
+    from {
+      opacity: 0;
+      transform: translateX(-50%) translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
   }
 
   .main-content {
